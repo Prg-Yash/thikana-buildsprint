@@ -75,43 +75,24 @@ export default function FeedPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      {/* 1. Email & Location Info Banners */}
-      <div className="space-y-3">
-        {user && !user.emailVerified && (
-          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3 text-xs sm:text-sm">
-            <div className="flex items-center gap-2.5">
-              <MailWarning className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span>
-                <strong>Verify your email address</strong> to enable post creation and merchant notifications.
-              </span>
-            </div>
-            <button
-              onClick={handleResendEmail}
-              disabled={resendingEmail}
-              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition"
-            >
-              {resendingEmail ? "Sending..." : "Resend Link"}
-            </button>
+      {/* Email Verification Banner */}
+      {user && !user.emailVerified && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3 text-xs sm:text-sm">
+          <div className="flex items-center gap-2.5">
+            <MailWarning className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>
+              <strong>Verify your email address</strong> to enable post creation and merchant notifications.
+            </span>
           </div>
-        )}
-
-        {locationDenied && (
-          <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-900 dark:text-blue-200 flex items-center justify-between gap-3 text-xs sm:text-sm">
-            <div className="flex items-center gap-2.5">
-              <MapPinOff className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
-              <span>
-                Location request timed out or disabled. Showing global updates. Enable location for distance ranking.
-              </span>
-            </div>
-            <button
-              onClick={retryLocation}
-              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 transition"
-            >
-              Retry Location
-            </button>
-          </div>
-        )}
-      </div>
+          <button
+            onClick={handleResendEmail}
+            disabled={resendingEmail}
+            className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition"
+          >
+            {resendingEmail ? "Sending..." : "Resend Link"}
+          </button>
+        </div>
+      )}
 
       {/* Header Bar */}
       <div className="flex items-center justify-between">
@@ -128,15 +109,15 @@ export default function FeedPage() {
             </span>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Real-time offers, product drops, and updates from local merchants near you.
+            Real-time offers, product drops, and updates from local merchants within 10 km.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={handlePullToRefresh}
-            disabled={refreshing}
-            className="p-2.5 rounded-2xl border border-[#E5E0D8] dark:border-white/10 bg-white dark:bg-[#1A1A1A] text-gray-700 dark:text-gray-200 hover:bg-[#F4F1EA] dark:hover:bg-white/5 transition flex items-center gap-2 text-xs font-bold"
+            disabled={refreshing || locationDenied}
+            className="p-2.5 rounded-2xl border border-[#E5E0D8] dark:border-white/10 bg-white dark:bg-[#1A1A1A] text-gray-700 dark:text-gray-200 hover:bg-[#F4F1EA] dark:hover:bg-white/5 transition flex items-center gap-2 text-xs font-bold disabled:opacity-50"
             title="Refresh Feed"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -157,14 +138,43 @@ export default function FeedPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left/Center Main Feed Column */}
         <section className="lg:col-span-8 space-y-5">
-          {loading ? (
-            /* STATE 1: Loading State */
+          {/* DEDICATED LOCATION-REQUIRED STATE */}
+          {locationDenied || (!loading && !coords) ? (
+            <div className="p-10 text-center rounded-3xl bg-white dark:bg-[#1A1A1A] border border-[#E5E0D8] dark:border-white/10 space-y-4 shadow-sm">
+              <div className="w-14 h-14 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+                <MapPinOff className="w-7 h-7" />
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-[#1A1A1A] dark:text-white" style={{ fontFamily: "var(--font-heading)" }}>
+                  Location Required for Local Feed
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-md mx-auto leading-relaxed">
+                  Thikana ranks posts based on 10 km spatial proximity. Please enable location permissions or calibrate your coordinates on the map.
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={retryLocation}
+                  className="px-5 py-2.5 rounded-2xl bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] text-xs font-bold transition flex items-center gap-2 shadow-sm"
+                >
+                  <Navigation className="w-4 h-4" /> Enable / Retry Geolocation
+                </button>
+                <Link
+                  href="/map"
+                  className="px-5 py-2.5 rounded-2xl border border-[#DDD8CF] dark:border-white/10 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                >
+                  Set Store Coordinates
+                </Link>
+              </div>
+            </div>
+          ) : loading ? (
+            /* Loading State */
             <div className="space-y-5">
               <PostCardSkeleton />
               <PostCardSkeleton />
             </div>
           ) : error ? (
-            /* STATE 3: Error State */
+            /* Error State */
             <div className="p-8 text-center rounded-3xl bg-white dark:bg-[#1A1A1A] border border-red-200 dark:border-red-900/30 space-y-3">
               <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
               <p className="text-sm font-bold text-red-600 dark:text-red-400">{error}</p>
@@ -176,15 +186,15 @@ export default function FeedPage() {
               </button>
             </div>
           ) : posts.length === 0 ? (
-            /* STATE 4: Empty State */
+            /* Empty State */
             <div className="p-12 text-center rounded-3xl bg-white dark:bg-[#1A1A1A] border border-[#E5E0D8] dark:border-white/10 space-y-4 shadow-sm">
               <Inbox className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto" />
               <div>
                 <h2 className="text-base font-black text-[#1A1A1A] dark:text-white" style={{ fontFamily: "var(--font-heading)" }}>
-                  No Updates in Your Area Yet
+                  No Merchant Updates Within 10 km
                 </h2>
                 <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-                  Be the first merchant to publish an offer or check back later as nearby shops join Thikana.
+                  Be the first business in your area to publish an update or check back as nearby shops join Thikana.
                 </p>
               </div>
               <Link
@@ -195,7 +205,7 @@ export default function FeedPage() {
               </Link>
             </div>
           ) : (
-            /* STATE 5 & 6: Loaded Posts & Pagination */
+            /* Loaded Feed & Pagination */
             <>
               {posts.map((post) => (
                 <PostCard key={post.id} post={post} currentUserId={user?.uid} />
@@ -225,7 +235,7 @@ export default function FeedPage() {
               <span>Thikana Local Guarantee</span>
             </div>
             <p className="text-[11px] text-gray-600 dark:text-gray-300 leading-relaxed">
-              Posts on Thikana are ranked based on geographic proximity, followed stores, and real merchant activity.
+              Posts on Thikana are ranked based on 10 km geographic proximity, followed stores, and real merchant activity.
             </p>
           </div>
         </aside>

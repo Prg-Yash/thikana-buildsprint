@@ -7,7 +7,8 @@ import { db } from "@/lib/firebase";
 import {
   collection,
   getDocs,
-  limit,
+  query,
+  where,
   doc,
   setDoc,
   deleteDoc,
@@ -16,6 +17,16 @@ import {
 import { getGeohashNeighbors, calculateHaversineDistance } from "@/lib/geohash";
 import { CheckCircle, UserPlus, UserCheck, Store } from "lucide-react";
 import toast from "react-hot-toast";
+
+function extractCoords(obj) {
+  if (!obj) return null;
+  const lat = typeof obj.lat === "number" ? obj.lat : typeof obj.latitude === "number" ? obj.latitude : null;
+  const lng = typeof obj.lng === "number" ? obj.lng : typeof obj.longitude === "number" ? obj.longitude : null;
+  if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+    return { lat, lng };
+  }
+  return null;
+}
 
 export function WhoToFollow({ currentUserId, userCoords }) {
   const [businesses, setBusinesses] = useState([]);
@@ -40,46 +51,75 @@ export function WhoToFollow({ currentUserId, userCoords }) {
           }
         }
 
-        // 2. Fetch businesses from Firestore
+        // 2. Query location_index if user coordinates are available
+        const nearbyBizIds = new Set();
+        const bizDistanceMap = new Map();
+
+        if (userCoords?.lat && userCoords?.lng) {
+          const spatial = getGeohashNeighbors(userCoords.lat, userCoords.lng, 5);
+          for (const cell of spatial.allCells) {
+            try {
+              const locQuery = query(
+                collection(db, "location_index"),
+                where("geohash5", "==", cell)
+              );
+              const locSnap = await getDocs(locQuery);
+              for (const lDoc of locSnap.docs) {
+                const lData = lDoc.data();
+                const bizId = lData.businessId || lDoc.id.split("_")[1] || lDoc.id;
+                const coords = extractCoords(lData) || extractCoords(lData.location);
+                if (coords) {
+                  const dist = calculateHaversineDistance(userCoords.lat, userCoords.lng, coords.lat, coords.lng);
+                  if (dist <= 10 && !followedIds.has(bizId)) {
+                    nearbyBizIds.add(bizId);
+                    bizDistanceMap.set(bizId, dist);
+                  }
+                }
+              }
+            } catch {
+              // Ignore cell query error
+            }
+          }
+        }
+
+        // 3. Fetch details for identified nearby businesses from `businesses` collection
         let fetchedList = [];
         try {
-          const bizSnap = await getDocs(collection(db, "businesses"), limit(20));
-          fetchedList = bizSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        } catch {
-          // Ignore
-        }
+          const bizSnap = await getDocs(collection(db, "businesses"));
+          for (const bDoc of bizSnap.docs) {
+            const data = bDoc.data();
+            const bId = bDoc.id;
 
-        // Filter out businesses user already follows
-        const unFollowedList = fetchedList.filter((b) => !followedIds.has(b.id));
+            if (followedIds.has(bId)) continue; // Exclude already followed
 
-        // 3. Compute distance if user coordinates are available
-        const scoredList = unFollowedList.map((biz) => {
-          let distFormatted = null;
-          let distanceKm = 999;
+            const coords = extractCoords(data._geoloc) || extractCoords(data.location);
+            let dist = bizDistanceMap.get(bId) ?? null;
 
-          if (userCoords && biz._geoloc?.lat && biz._geoloc?.lng) {
-            distanceKm = calculateHaversineDistance(
-              userCoords.lat,
-              userCoords.lng,
-              biz._geoloc.lat,
-              biz._geoloc.lng
-            );
-            distFormatted = `${distanceKm} km`;
+            if (dist === null && userCoords?.lat && userCoords?.lng && coords) {
+              dist = calculateHaversineDistance(userCoords.lat, userCoords.lng, coords.lat, coords.lng);
+            }
+
+            // Enforce strict 10 km spatial cutoff
+            if (dist !== null && dist <= 10) {
+              fetchedList.push({
+                id: bId,
+                ...data,
+                name: data.businessName || data.name || "Local Shop",
+                avatar: data.profilePic || data.avatar || data.logo || "",
+                category: data.business_type || data.category || "Local Business",
+                distanceKm: dist,
+                distanceFormatted: `${Math.round(dist * 10) / 10} km`,
+              });
+            }
           }
-
-          return {
-            ...biz,
-            distanceKm,
-            distanceFormatted: distFormatted || biz.distanceFormatted || null,
-          };
-        });
-
-        // Sort by distance if location available
-        if (userCoords) {
-          scoredList.sort((a, b) => a.distanceKm - b.distanceKm);
+        } catch (err) {
+          console.warn("Error querying businesses collection:", err.message);
         }
 
-        setBusinesses(scoredList.slice(0, 5));
+        // Sort by distance ascending
+        fetchedList.sort((a, b) => a.distanceKm - b.distanceKm);
+
+        setBusinesses(fetchedList.slice(0, 5));
       } catch (err) {
         console.error("Error loading WhoToFollow:", err);
       } finally {
@@ -123,7 +163,6 @@ export function WhoToFollow({ currentUserId, userCoords }) {
       }
     }
 
-    // Refresh list to exclude newly followed business
     setBusinesses((prev) => prev.filter((b) => !newFollowed.has(b.id)));
   };
 
@@ -144,7 +183,7 @@ export function WhoToFollow({ currentUserId, userCoords }) {
           </h2>
         </div>
         <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-          Hyperlocal
+          Within 10 km
         </span>
       </div>
 

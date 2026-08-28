@@ -33,13 +33,14 @@ export default function RootLayout({ children }) {
       <body
         className={`${bricolage.variable} ${manrope.variable} min-h-screen bg-background antialiased`}
         style={{ fontFamily: "var(--font-body), system-ui, sans-serif" }}
+        suppressHydrationWarning
       >
         <ThemeProvider>
           <AuthProvider>
             <div className="relative flex min-h-screen h-full flex-col">
               <main className="flex-1">{children}</main>
             </div>
-            <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="beforeInteractive" />
+            <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
             <Toaster />
             <ThemeSwitcher />
           </AuthProvider>

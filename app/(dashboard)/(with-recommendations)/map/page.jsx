@@ -100,10 +100,13 @@ export default function StoreLocationPicker() {
 
   // Initialize Map ONCE when script loaded
   const initMap = useCallback(() => {
-    if (!window.google || !mapRef.current || isMapInitializedRef.current) return;
+    if (!window.google || !window.google.maps || !mapRef.current || isMapInitializedRef.current) return;
+
+    const google = window.google;
+    if (!google.maps.Map || !google.maps.Geocoder || !google.maps.Marker) return;
 
     isMapInitializedRef.current = true;
-    const google = window.google;
+
     const geo = new google.maps.Geocoder();
     geocoderRef.current = geo;
     setGeocoder(geo);
@@ -128,7 +131,7 @@ export default function StoreLocationPicker() {
       position: coordinates,
       map: mapInstance,
       draggable: true,
-      animation: google.maps.Animation.DROP,
+      animation: google.maps.Animation ? google.maps.Animation.DROP : null,
       title: "Store Location",
     });
 
@@ -143,8 +146,8 @@ export default function StoreLocationPicker() {
     // Drag marker event
     markerInstance.addListener("dragend", () => {
       const pos = markerInstance.getPosition();
-      const newLat = pos.lat();
-      const newLng = pos.lng();
+      const newLat = typeof pos.lat === "function" ? pos.lat() : pos.lat;
+      const newLng = typeof pos.lng === "function" ? pos.lng() : pos.lng;
       setCoordinates({ lat: newLat, lng: newLng });
       reverseGeocode(newLat, newLng);
     });
@@ -158,7 +161,6 @@ export default function StoreLocationPicker() {
       reverseGeocode(clickedLat, clickedLng);
     });
 
-    // Google Places Autocomplete or PlaceAutocompleteElement fallback
     if (searchInputRef.current && google.maps.places) {
       try {
         const autocomplete = new google.maps.places.Autocomplete(searchInputRef.current, {

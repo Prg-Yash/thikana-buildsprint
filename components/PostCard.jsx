@@ -30,28 +30,39 @@ import {
   ChevronRight,
   Send,
   Trash2,
-  Clock,
+  Edit2,
   MoreVertical,
+  X,
+  Check,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-export function PostCard({ post, currentUserId, onDelete }) {
+export function PostCard({ post, currentUserId, onDelete, onUpdate }) {
   const [liked, setLiked] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
-  const [likesCount, setLikesCount] = useState(post?.likesCount || 0);
+  const [likeCount, setLikeCount] = useState(
+    typeof post?.likeCount === "number"
+      ? post.likeCount
+      : typeof post?.likesCount === "number"
+      ? post.likesCount
+      : 0
+  );
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   const [commentDrawerOpen, setCommentDrawerOpen] = useState(false);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editCaption, setEditCaption] = useState(post?.caption || "");
+  const [updatingCaption, setUpdatingCaption] = useState(false);
 
   const images =
     post?.images && post.images.length > 0 ? post.images : post?.imageUrl ? [post.imageUrl] : [];
 
-  const isOwner = currentUserId && (post?.userId === currentUserId || post?.businessId === currentUserId);
+  const isOwner =
+    currentUserId && (post?.userId === currentUserId || post?.businessId === currentUserId || post?.uid === currentUserId);
 
-  // Check initial like & bookmark status from Firestore subcollections
   useEffect(() => {
     async function checkUserInteractions() {
       if (!currentUserId || !post?.id) return;
@@ -76,7 +87,6 @@ export function PostCard({ post, currentUserId, onDelete }) {
     checkUserInteractions();
   }, [post?.id, currentUserId]);
 
-  // Fetch comments from Firestore when comment drawer opens
   useEffect(() => {
     async function fetchComments() {
       if (!commentDrawerOpen || !post?.id) return;
@@ -105,31 +115,36 @@ export function PostCard({ post, currentUserId, onDelete }) {
       return;
     }
 
+    const prevLiked = liked;
+    const prevCount = likeCount;
+
+    // Optimistic Update
+    if (liked) {
+      setLiked(false);
+      setLikeCount((prev) => Math.max(0, prev - 1));
+    } else {
+      setLiked(true);
+      setLikeCount((prev) => prev + 1);
+    }
+
     const postRef = doc(db, "posts", post.id);
     const likeRef = doc(db, "posts", post.id, "likes", currentUserId);
 
-    if (liked) {
-      setLiked(false);
-      setLikesCount((prev) => Math.max(0, prev - 1));
-      try {
+    try {
+      if (prevLiked) {
         await deleteDoc(likeRef);
-        await updateDoc(postRef, { likesCount: increment(-1) });
-      } catch (err) {
-        console.error("Error removing like:", err);
+        await updateDoc(postRef, { likeCount: increment(-1), likesCount: increment(-1) });
+      } else {
+        await setDoc(likeRef, { userId: currentUserId, createdAt: serverTimestamp() });
+        await updateDoc(postRef, { likeCount: increment(1), likesCount: increment(1) });
+        toast.success("Liked post!");
       }
-    } else {
-      setLiked(true);
-      setLikesCount((prev) => prev + 1);
-      toast.success("Liked post!");
-      try {
-        await setDoc(likeRef, {
-          userId: currentUserId,
-          createdAt: serverTimestamp(),
-        });
-        await updateDoc(postRef, { likesCount: increment(1) });
-      } catch (err) {
-        console.error("Error adding like:", err);
-      }
+    } catch (err) {
+      console.error("Error updating like status in Firestore:", err);
+      // Rollback optimistic update on failure
+      setLiked(prevLiked);
+      setLikeCount(prevCount);
+      toast.error("Failed to update like status.");
     }
   };
 
@@ -139,27 +154,23 @@ export function PostCard({ post, currentUserId, onDelete }) {
       return;
     }
 
+    const prevBookmarked = bookmarked;
+    setBookmarked(!prevBookmarked);
+
     const bookmarkRef = doc(db, "users", currentUserId, "bookmarks", post.id);
 
-    if (bookmarked) {
-      setBookmarked(false);
-      toast.success("Removed from saved posts");
-      try {
+    try {
+      if (prevBookmarked) {
         await deleteDoc(bookmarkRef);
-      } catch (err) {
-        console.error("Error deleting bookmark:", err);
+        toast.success("Removed from saved posts");
+      } else {
+        await setDoc(bookmarkRef, { postId: post.id, savedAt: serverTimestamp() });
+        toast.success("Post saved!");
       }
-    } else {
-      setBookmarked(true);
-      toast.success("Post saved!");
-      try {
-        await setDoc(bookmarkRef, {
-          postId: post.id,
-          savedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        console.error("Error saving bookmark:", err);
-      }
+    } catch (err) {
+      console.error("Error saving bookmark in Firestore:", err);
+      setBookmarked(prevBookmarked); // Rollback
+      toast.error("Failed to update saved post status.");
     }
   };
 
@@ -202,7 +213,7 @@ export function PostCard({ post, currentUserId, onDelete }) {
       const docRef = await addDoc(collection(db, "posts", post.id, "comments"), commentData);
 
       setComments((prev) => [
-        { id: docRef.id, text: newComment.trim(), userDisplayName: "You", createdAtFormatted: "Just now" },
+        { id: docRef.id, text: newComment.trim(), userDisplayName: "You" },
         ...prev,
       ]);
 
@@ -213,6 +224,27 @@ export function PostCard({ post, currentUserId, onDelete }) {
       toast.error("Failed to post comment.");
     } finally {
       setSubmittingComment(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editCaption.trim() || !post?.id) return;
+    setUpdatingCaption(true);
+    try {
+      const postRef = doc(db, "posts", post.id);
+      await updateDoc(postRef, {
+        caption: editCaption.trim(),
+        content: editCaption.trim(),
+        description: editCaption.trim(),
+      });
+      setIsEditing(false);
+      toast.success("Post caption updated!");
+      if (onUpdate) onUpdate(post.id, editCaption.trim());
+    } catch (err) {
+      console.error("Error editing post:", err);
+      toast.error("Failed to update post.");
+    } finally {
+      setUpdatingCaption(false);
     }
   };
 
@@ -284,16 +316,28 @@ export function PostCard({ post, currentUserId, onDelete }) {
             <div className="relative">
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
-                className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500"
+                className="p-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 transition"
               >
                 <MoreVertical className="w-4 h-4" />
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 mt-1 w-32 bg-white dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-xl shadow-lg py-1 z-20">
+                <div className="absolute right-0 mt-1 w-32 bg-white dark:bg-[#222] border border-gray-200 dark:border-white/10 rounded-2xl shadow-xl py-1 z-20 overflow-hidden">
                   <button
-                    onClick={handleDeletePost}
-                    className="w-full text-left px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-1.5"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setIsEditing(true);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 flex items-center gap-2 transition"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Edit Post
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      handleDeletePost();
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 transition border-t border-gray-100 dark:border-white/5"
                   >
                     <Trash2 className="w-3.5 h-3.5" /> Delete
                   </button>
@@ -351,17 +395,42 @@ export function PostCard({ post, currentUserId, onDelete }) {
         </div>
       )}
 
-      {/* 3. Caption */}
-      {post?.caption && (
-        <p className="text-xs sm:text-sm text-[#333] dark:text-gray-200 leading-relaxed font-normal">
-          {post.caption}
-        </p>
+      {/* 3. Caption / Edit Form */}
+      {isEditing ? (
+        <div className="space-y-2">
+          <textarea
+            value={editCaption}
+            onChange={(e) => setEditCaption(e.target.value)}
+            rows={3}
+            className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-3 text-xs text-[#1A1A1A] dark:text-white outline-none focus:border-[#1A1A1A]"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setIsEditing(false)}
+              className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveEdit}
+              disabled={updatingCaption}
+              className="px-3 py-1.5 rounded-xl bg-[#1A1A1A] text-white text-xs font-bold flex items-center gap-1"
+            >
+              <Check className="w-3.5 h-3.5" /> Save
+            </button>
+          </div>
+        </div>
+      ) : (
+        post?.caption && (
+          <p className="text-xs sm:text-sm text-[#333] dark:text-gray-200 leading-relaxed font-normal">
+            {post.caption}
+          </p>
+        )
       )}
 
-      {/* 4. Action Buttons (Like, Comment, Save/Bookmark, Share) */}
+      {/* 4. Action Buttons */}
       <div className="flex items-center justify-between pt-2 border-t border-[#E5E0D8] dark:border-white/10">
         <div className="flex items-center gap-1 sm:gap-2">
-          {/* Like button */}
           <button
             onClick={handleLikeToggle}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold transition ${
@@ -371,19 +440,17 @@ export function PostCard({ post, currentUserId, onDelete }) {
             }`}
           >
             <Heart className={`w-4 h-4 ${liked ? "fill-rose-600 dark:fill-rose-400" : ""}`} />
-            <span>{likesCount}</span>
+            <span>{likeCount}</span>
           </button>
 
-          {/* Comment Drawer toggle */}
           <button
             onClick={() => setCommentDrawerOpen(!commentDrawerOpen)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-[#F4F1EA] dark:hover:bg-white/5 transition"
           >
             <MessageCircle className="w-4 h-4" />
-            <span>{comments.length}</span>
+            <span>{comments.length || post?.commentCount || 0}</span>
           </button>
 
-          {/* Save / Bookmark Button */}
           <button
             onClick={handleBookmarkToggle}
             className={`p-2 rounded-2xl transition ${
@@ -396,7 +463,6 @@ export function PostCard({ post, currentUserId, onDelete }) {
             <Bookmark className={`w-4 h-4 ${bookmarked ? "fill-amber-500" : ""}`} />
           </button>
 
-          {/* Web Share Button */}
           <button
             onClick={handleShare}
             className="p-2 rounded-2xl text-gray-600 dark:text-gray-300 hover:bg-[#F4F1EA] dark:hover:bg-white/5 transition"

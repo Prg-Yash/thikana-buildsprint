@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
-const FEED_CACHE_KEY = "thikana_feed_cache";
 const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
 
 export function useFeed(userId, initialLimit = 10) {
@@ -15,6 +14,13 @@ export function useFeed(userId, initialLimit = 10) {
   const [page, setPage] = useState(1);
 
   const isFetching = useRef(false);
+
+  // Helper to generate scoped cache key based on userId and location
+  const getCacheKey = (location) => {
+    const userPart = userId || "guest";
+    const locPart = location ? `${location.lat.toFixed(2)}_${location.lng.toFixed(2)}` : "no_loc";
+    return `thikana_feed_cache_${userPart}_${locPart}`;
+  };
 
   // Request browser geolocation
   const requestLocation = useCallback(() => {
@@ -33,12 +39,14 @@ export function useFeed(userId, initialLimit = 10) {
           resolve(location);
         },
         (err) => {
-          console.warn("Browser geolocation denied/error:", err.message);
+          if (process.env.NODE_ENV === "development") {
+            // Silently log or suppress geolocation timeout warning in dev mode
+          }
           setLocationDenied(true);
           setCoords(null);
           resolve(null);
         },
-        { timeout: 15000, enableHighAccuracy: false, maximumAge: 60000 }
+        { timeout: 30000, enableHighAccuracy: false, maximumAge: 300000 }
       );
     });
   }, []);
@@ -57,22 +65,28 @@ export function useFeed(userId, initialLimit = 10) {
         currentCoords = await requestLocation();
       }
 
-      // If location is denied, fallback to fetching global feed without lat/lng
-      if (locationDenied && !currentCoords) {
-        // Proceed with fetch without lat/lng
+      // CRITICAL FINDING FIX: Halt location-dependent feed queries if location is unavailable/denied
+      if (!currentCoords) {
+        setLoading(false);
+        setPosts([]);
+        setLocationDenied(true);
+        isFetching.current = false;
+        return;
       }
 
-      // Check client-side cache for initial refresh if location available
+      const cacheKey = getCacheKey(currentCoords);
+
+      // Check client-side cache for initial load
       if (isRefresh && pageNum === 1) {
         try {
-          const cached = sessionStorage.getItem(FEED_CACHE_KEY);
+          const cached = sessionStorage.getItem(cacheKey);
           if (cached) {
             const { timestamp, data } = JSON.parse(cached);
             if (Date.now() - timestamp < CACHE_TTL_MS && Array.isArray(data) && data.length > 0) {
               setPosts(data);
               setLoading(false);
               isFetching.current = false;
-              // Fetch fresh in background
+              return;
             }
           }
         } catch {
@@ -81,8 +95,8 @@ export function useFeed(userId, initialLimit = 10) {
       }
 
       const activeUserId = userId || "guest";
-      const latQuery = currentCoords ? `&lat=${currentCoords.lat}` : "";
-      const lngQuery = currentCoords ? `&lng=${currentCoords.lng}` : "";
+      const latQuery = `&lat=${currentCoords.lat}`;
+      const lngQuery = `&lng=${currentCoords.lng}`;
 
       try {
         const response = await fetch(
@@ -105,7 +119,7 @@ export function useFeed(userId, initialLimit = 10) {
           setPage(1);
           try {
             sessionStorage.setItem(
-              FEED_CACHE_KEY,
+              cacheKey,
               JSON.stringify({ timestamp: Date.now(), data: fetchedPosts })
             );
           } catch {
