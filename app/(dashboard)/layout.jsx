@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
-import { BusinessProvider, useBusiness } from "@/context/BusinessContext";
+import { BusinessProvider } from "@/context/BusinessContext";
+import { LocationAlertProvider, useLocationAlert } from "@/context/LocationAlertContext";
 import {
   Home,
   Compass,
@@ -36,15 +37,9 @@ const NAV_ITEMS = [
 ];
 
 function GeoAlertBanner() {
-  const { user } = useAuth();
-  const { business, hasGeoLocation } = useBusiness();
-  const [dismissed, setDismissed] = useState(false);
+  const { alertVisible, dismissAlert } = useLocationAlert();
 
-  // Prompt business users if store geo-coordinates are missing
-  const isBusiness = user?.accountType === "business" || Boolean(business);
-  const showBanner = isBusiness && !hasGeoLocation && !dismissed;
-
-  if (!showBanner) return null;
+  if (!alertVisible) return null;
 
   return (
     <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 text-amber-900 dark:text-amber-200 text-xs sm:text-sm font-medium flex items-center justify-between gap-3">
@@ -63,7 +58,7 @@ function GeoAlertBanner() {
           Set Location
         </Link>
         <button
-          onClick={() => setDismissed(true)}
+          onClick={dismissAlert}
           className="p-1 text-amber-700 dark:text-amber-400 hover:text-amber-950 dark:hover:text-amber-100 transition"
           aria-label="Dismiss banner"
         >
@@ -375,7 +370,9 @@ export default function DashboardLayout({ children }) {
 
   return (
     <BusinessProvider>
-      <DashboardContent>{children}</DashboardContent>
+      <LocationAlertProvider>
+        <DashboardContent>{children}</DashboardContent>
+      </LocationAlertProvider>
     </BusinessProvider>
   );
 }

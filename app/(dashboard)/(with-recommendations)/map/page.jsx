@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import geohash from "ngeohash";
+import { encodeGeohash } from "@/lib/geohash";
 import toast from "react-hot-toast";
 import {
   MapPin,
@@ -247,8 +247,8 @@ export default function StoreLocationPicker() {
     setIsSaving(true);
     try {
       // 5-character geohash cell (~4.9km x 4.9km area cell)
-      const gHash5 = geohash.encode(coordinates.lat, coordinates.lng, 5);
-      const gHash8 = geohash.encode(coordinates.lat, coordinates.lng, 8);
+      const gHash5 = encodeGeohash(coordinates.lat, coordinates.lng, 5);
+      const gHash8 = encodeGeohash(coordinates.lat, coordinates.lng, 8);
 
       const addressData = {
         formatted: formattedAddress,
