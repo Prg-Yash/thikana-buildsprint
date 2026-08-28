@@ -29,7 +29,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body
         className={`${bricolage.variable} ${manrope.variable} min-h-screen bg-background antialiased`}
         style={{ fontFamily: "var(--font-body), system-ui, sans-serif" }}

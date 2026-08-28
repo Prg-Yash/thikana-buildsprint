@@ -38,7 +38,9 @@ export default function LoginPage() {
                 >
                     {/* Logo */}
                     <div className="mb-10">
-                        <Image src="/logo/black-logo.png" alt="Thikana" width={90} height={90} />
+                        <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] text-white flex items-center justify-center font-black text-2xl">
+                            T
+                        </div>
                     </div>
 
                     {/* Heading */}

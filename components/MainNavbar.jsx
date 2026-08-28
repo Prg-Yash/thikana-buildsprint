@@ -155,14 +155,12 @@ const MainNavbar = () => {
           <div className="flex items-center">
             <Link href="/feed" className="flex items-center space-x-2">
               <div className="flex items-center gap-2">
-                <Image
-                  src="/logo/logo_text.png"
-                  alt="Thikana Logo"
-                  width={120}
-                  height={32}
-                  className="h-8 w-auto"
-                  priority
-                />
+                <div className="w-8 h-8 rounded-xl bg-[#1A1A1A] text-white flex items-center justify-center font-black text-base">
+                  T
+                </div>
+                <span className="font-extrabold text-xl tracking-tight text-[#1A1A1A] font-[family-name:var(--font-heading)]">
+                  Thikana
+                </span>
               </div>
             </Link>
           </div>
