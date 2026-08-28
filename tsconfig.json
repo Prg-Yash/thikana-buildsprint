@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +23,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
@@ -28,7 +34,18 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    "app/(auth)/login/page.jsx",
+    "app/(auth)/register/page.jsx",
+    "app/(auth)/layout.jsx",
+    "app/layout.jsx",
+    "app/page.jsx",
+    "app/(landing-pages)/layout.jsx",
+    "app/(landing-pages)/pricing/page.jsx",
+    "app/(landing-pages)/about-us/page.jsx",
+    "app/(landing-pages)/contact-us/page.jsx"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }
