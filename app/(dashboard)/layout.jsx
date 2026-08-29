@@ -35,9 +35,9 @@ import {
 const NAV_ITEMS = [
   { name: "Home Feed", href: "/feed", icon: Home },
   { name: "Discover / Map", href: "/map", icon: Compass },
-  { name: "Analytics Dashboard", href: "/analytics", icon: BarChart3 },
-  { name: "Inventory Catalog", href: "/products", icon: Package },
-  { name: "Store Services", href: "/services", icon: Wrench },
+  { name: "Analytics Dashboard", href: "/profile/analytics", icon: BarChart3 },
+  { name: "Inventory Management", href: "/profile/inventory", icon: Package },
+  { name: "Store Services", href: "/profile/services", icon: Wrench },
   { name: "Create Post", href: "/posts/create", icon: PlusSquare },
   { name: "Website Builder", href: "/websites", icon: Globe },
   { name: "Settings", href: "/profile/settings", icon: Settings },

@@ -173,24 +173,62 @@ export default function StorefrontPage({ params }) {
             console.warn("Could not fetch store posts:", err);
           }
 
-          // Fetch business products catalog
+          // Fetch business products catalog for this specific business (bizId)
           try {
-            const qProd = query(collection(db, "products"), where("userId", "==", bizId));
-            const prodSnap = await getDocs(qProd);
-            if (!prodSnap.empty) {
-              setProducts(prodSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+            const prodMap = new Map();
+
+            // 1. Check top-level products collection where userId == bizId or merchantId == bizId
+            try {
+              const qProd1 = query(collection(db, "products"), where("userId", "==", bizId));
+              const pSnap1 = await getDocs(qProd1);
+              pSnap1.docs.forEach((d) => prodMap.set(d.id, { id: d.id, ...d.data() }));
+
+              const qProd2 = query(collection(db, "products"), where("merchantId", "==", bizId));
+              const pSnap2 = await getDocs(qProd2);
+              pSnap2.docs.forEach((d) => prodMap.set(d.id, { id: d.id, ...d.data() }));
+            } catch {
+              // Ignore
             }
+
+            // 2. Check user-scoped subcollection users/{bizId}/products
+            try {
+              const subProdSnap = await getDocs(collection(db, "users", bizId, "products"));
+              subProdSnap.docs.forEach((d) => prodMap.set(d.id, { id: d.id, ...d.data() }));
+            } catch {
+              // Ignore
+            }
+
+            setProducts(Array.from(prodMap.values()));
           } catch (err) {
             console.warn("Could not fetch store products:", err);
           }
 
-          // Fetch business services catalog
+          // Fetch business services catalog for this specific business (bizId)
           try {
-            const qServ = query(collection(db, "services"), where("userId", "==", bizId));
-            const servSnap = await getDocs(qServ);
-            if (!servSnap.empty) {
-              setServices(servSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+            const servMap = new Map();
+
+            // 1. Check top-level services collection
+            try {
+              const qServ1 = query(collection(db, "services"), where("userId", "==", bizId));
+              const sSnap1 = await getDocs(qServ1);
+              sSnap1.docs.forEach((d) => servMap.set(d.id, { id: d.id, ...d.data() }));
+
+              const qServ2 = query(collection(db, "services"), where("merchantId", "==", bizId));
+              const sSnap2 = await getDocs(qServ2);
+              sSnap2.docs.forEach((d) => servMap.set(d.id, { id: d.id, ...d.data() }));
+            } catch {
+              // Ignore
             }
+
+            // 2. Check user-scoped subcollection users/{bizId}/services
+            try {
+              const subServSnap = await getDocs(collection(db, "users", bizId, "services"));
+              subServSnap.docs.forEach((d) => servMap.set(d.id, { id: d.id, ...d.data() }));
+            } catch {
+              // Ignore
+            }
+
+            setServices(Array.from(servMap.values()));
           } catch (err) {
             console.warn("Could not fetch store services:", err);
           }
@@ -238,25 +276,109 @@ export default function StorefrontPage({ params }) {
     }
   };
 
+  const getAvailableSlotsForDate = (dateStr) => {
+    if (!dateStr || !selectedService?.weeklySchedule) return [];
+
+    const dateObj = new Date(dateStr + "T00:00:00");
+    if (isNaN(dateObj.getTime())) return [];
+
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const dayName = dayNames[dateObj.getDay()];
+
+    const daySchedule = selectedService.weeklySchedule.find(
+      (s) => (s.day || "").toLowerCase() === dayName.toLowerCase()
+    );
+
+    if (!daySchedule || !daySchedule.enabled) {
+      return [];
+    }
+
+    const startH = parseInt((daySchedule.startTime || "09:00").split(":")[0], 10) || 9;
+    const startM = parseInt((daySchedule.startTime || "09:00").split(":")[1], 10) || 0;
+    const endH = parseInt((daySchedule.endTime || "18:00").split(":")[0], 10) || 18;
+    const endM = parseInt((daySchedule.endTime || "18:00").split(":")[1], 10) || 0;
+
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    const durationMins = selectedService.durationMinutes || selectedService.duration || 30;
+
+    const slots = [];
+    for (let m = startMinutes; m + durationMins <= endMinutes; m += durationMins) {
+      const h = Math.floor(m / 60);
+      const mins = m % 60;
+      const ampm = h >= 12 ? "PM" : "AM";
+      const displayH = h % 12 === 0 ? 12 : h % 12;
+      const displayM = mins < 10 ? `0${mins}` : mins;
+      slots.push(`${displayH}:${displayM} ${ampm}`);
+    }
+
+    return slots;
+  };
+
+  const availableSlots = getAvailableSlotsForDate(bookingDate);
+
+  const handleDateChange = (e) => {
+    const selectedDate = e.target.value;
+    setBookingDate(selectedDate);
+    setBookingTime("");
+
+    if (selectedDate && selectedService?.weeklySchedule) {
+      const dateObj = new Date(selectedDate + "T00:00:00");
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const dayName = dayNames[dateObj.getDay()];
+
+      const daySchedule = selectedService.weeklySchedule.find(
+        (s) => (s.day || "").toLowerCase() === dayName.toLowerCase()
+      );
+
+      if (!daySchedule || !daySchedule.enabled) {
+        toast.error(`Service unavailable on ${dayName}s. Please pick an active day.`);
+      }
+    }
+  };
+
   const handleBookAppointment = async (e) => {
     e.preventDefault();
     if (!clientName.trim() || !clientPhone.trim() || !selectedService) return;
 
-    setSubmittingBooking(true);
-    try {
-      await addDoc(collection(db, "appointments"), {
-        merchantId: storeData.id,
-        serviceId: selectedService.id,
-        serviceTitle: selectedService.title || selectedService.name,
-        clientName: clientName.trim(),
-        clientPhone: clientPhone.trim(),
-        bookingDate: bookingDate || new Date().toISOString().split("T")[0],
-        bookingTime: bookingTime || "10:00 AM",
-        status: "Pending",
-        createdAt: serverTimestamp(),
-      });
+    if (availableSlots.length === 0) {
+      toast.error("No available slots on selected date. Please pick an active service day.");
+      return;
+    }
 
-      toast.success("Appointment booking submitted!");
+    if (!bookingTime) {
+      toast.error("Please select a time slot.");
+      return;
+    }
+
+    setSubmittingBooking(true);
+    const appointmentDoc = {
+      merchantId: storeData?.id || "merchant",
+      merchantName: storeData?.name || "Merchant",
+      serviceId: selectedService.id,
+      serviceTitle: selectedService.title || selectedService.name,
+      servicePrice: selectedService.price || 0,
+      serviceDuration: selectedService.durationMinutes || selectedService.duration || 30,
+      clientName: clientName.trim(),
+      clientPhone: clientPhone.trim(),
+      bookingDate: bookingDate || new Date().toISOString().split("T")[0],
+      bookingTime: bookingTime || "10:00 AM",
+      status: "Pending",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      if (storeData?.id) {
+        try {
+          await addDoc(collection(db, "users", storeData.id, "appointments"), appointmentDoc);
+        } catch {
+          // Ignore
+        }
+      }
+      await addDoc(collection(db, "appointments"), appointmentDoc);
+
+      toast.success("Appointment booking submitted! Merchant will contact you.");
       setBookModalOpen(false);
       setClientName("");
       setClientPhone("");
@@ -602,8 +724,29 @@ export default function StorefrontPage({ params }) {
               <h3 className="font-black text-base text-[#1A1A1A] dark:text-white">
                 {selectedService.title || selectedService.name}
               </h3>
-              <p className="text-xs font-bold text-emerald-600">₹{selectedService.price || 0} • {selectedService.durationMinutes || 30} Mins</p>
+              <p className="text-xs font-bold text-emerald-600">
+                {selectedService.priceType === "variable" ? `Approx. ₹${selectedService.approxPrice || selectedService.price}` : `₹${selectedService.price || 0}`} • {selectedService.durationMinutes || selectedService.duration || 30} Mins
+              </p>
             </div>
+
+            {/* Weekly Days Schedule Overview */}
+            {Array.isArray(selectedService.weeklySchedule) && (
+              <div className="p-3 rounded-2xl bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 space-y-1">
+                <p className="text-[10px] font-bold uppercase text-gray-500">Service Hours & Available Days</p>
+                <div className="flex flex-wrap gap-1">
+                  {selectedService.weeklySchedule.map((s) => (
+                    <span
+                      key={s.day}
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                        s.enabled ? "bg-emerald-500/10 text-emerald-600" : "bg-gray-100 text-gray-400 line-through"
+                      }`}
+                    >
+                      {s.day} {s.enabled ? `(${s.startTime}-${s.endTime})` : ""}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleBookAppointment} className="space-y-3">
               <div>
@@ -637,21 +780,35 @@ export default function StorefrontPage({ params }) {
                     type="date"
                     required
                     value={bookingDate}
-                    onChange={(e) => setBookingDate(e.target.value)}
+                    onChange={handleDateChange}
                     className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2 text-xs text-[#1A1A1A] dark:text-white outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Time Slot</label>
-                  <input
-                    type="text"
+                  <select
                     required
+                    disabled={!bookingDate || availableSlots.length === 0}
                     value={bookingTime}
                     onChange={(e) => setBookingTime(e.target.value)}
-                    placeholder="e.g. 10:30 AM"
-                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2 text-xs text-[#1A1A1A] dark:text-white outline-none"
-                  />
+                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2 text-xs text-[#1A1A1A] dark:text-white outline-none disabled:opacity-50"
+                  >
+                    {!bookingDate ? (
+                      <option value="">Pick Date First</option>
+                    ) : availableSlots.length === 0 ? (
+                      <option value="">No Slots on Selected Day</option>
+                    ) : (
+                      <>
+                        <option value="">Select Slot</option>
+                        {availableSlots.map((slot) => (
+                          <option key={slot} value={slot}>
+                            {slot}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
                 </div>
               </div>
 
