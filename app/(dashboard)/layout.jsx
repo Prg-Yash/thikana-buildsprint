@@ -7,12 +7,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { BusinessProvider } from "@/context/BusinessContext";
 import { LocationAlertProvider, useLocationAlert } from "@/context/LocationAlertContext";
+import Image from "next/image";
 import {
   Home,
   Compass,
   BarChart3,
   PlusSquare,
   ShoppingBag,
+  Package,
+  Wrench,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -25,14 +28,18 @@ import {
   AlertTriangle,
   X,
   Menu,
+  Globe,
+  Store,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { name: "Home Feed", href: "/feed", icon: Home },
   { name: "Discover / Map", href: "/map", icon: Compass },
-  { name: "Website Builder", href: "/websites", icon: PlusSquare },
   { name: "Analytics Dashboard", href: "/analytics", icon: BarChart3 },
-  { name: "Store Products", href: "/products", icon: ShoppingBag },
+  { name: "Inventory Catalog", href: "/products", icon: Package },
+  { name: "Store Services", href: "/services", icon: Wrench },
+  { name: "Create Post", href: "/posts/create", icon: PlusSquare },
+  { name: "Website Builder", href: "/websites", icon: Globe },
   { name: "Settings", href: "/profile/settings", icon: Settings },
 ];
 
@@ -151,12 +158,21 @@ function DashboardContent({ children }) {
           {!collapsed && user && (
             <div className="p-4 border-t border-[#E5E0D8] dark:border-white/10 bg-[#FBF9F5] dark:bg-[#161616]">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] flex items-center justify-center font-bold text-sm shrink-0">
-                  {user?.displayName ? user.displayName.charAt(0).toUpperCase() : "U"}
+                <div className="relative w-9 h-9 rounded-full bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
+                  {(user?.profilePic || user?.photoURL) ? (
+                    <Image
+                      src={user.profilePic || user.photoURL}
+                      alt={user?.displayName || "User"}
+                      fill
+                      className="object-cover"
+                    />
+                  ) : (
+                    <span>{user?.displayName ? user.displayName.charAt(0).toUpperCase() : "U"}</span>
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold truncate text-[#1A1A1A] dark:text-white">
-                    {user?.displayName || "User"}
+                    {user?.displayName || user?.name || user?.businessName || "User"}
                   </p>
                   <p className="text-[11px] text-gray-500 truncate">{user?.email}</p>
                 </div>
@@ -218,11 +234,20 @@ function DashboardContent({ children }) {
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className="flex items-center gap-2 p-1.5 rounded-2xl border border-[#DDD8CF] dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10 transition"
                 >
-                  <div className="w-7 h-7 rounded-full bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] flex items-center justify-center text-xs font-bold">
-                    {user?.displayName ? user.displayName.charAt(0).toUpperCase() : "U"}
+                  <div className="relative w-7 h-7 rounded-full bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] flex items-center justify-center text-xs font-bold overflow-hidden">
+                    {(user?.profilePic || user?.photoURL) ? (
+                      <Image
+                        src={user.profilePic || user.photoURL}
+                        alt={user?.displayName || "User"}
+                        fill
+                        className="object-cover"
+                      />
+                    ) : (
+                      <span>{user?.displayName ? user.displayName.charAt(0).toUpperCase() : "U"}</span>
+                    )}
                   </div>
-                  <span className="hidden sm:inline text-xs font-bold text-[#1A1A1A] dark:text-white max-w-[100px] truncate">
-                    {user?.displayName || "Account"}
+                  <span className="hidden sm:inline text-xs font-bold text-[#1A1A1A] dark:text-white max-w-25 truncate">
+                    {user?.displayName || user?.name || user?.businessName || "Account"}
                   </span>
                 </button>
 
@@ -230,7 +255,7 @@ function DashboardContent({ children }) {
                   <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#222222] border border-[#E5E0D8] dark:border-white/10 rounded-2xl shadow-xl py-2 z-50">
                     <div className="px-4 py-2 border-b border-gray-100 dark:border-white/10">
                       <p className="text-xs font-bold text-[#1A1A1A] dark:text-white truncate">
-                        {user?.displayName || "User"}
+                        {user?.displayName || user?.name || user?.businessName || "User"}
                       </p>
                       <p className="text-[11px] text-gray-500 truncate">{user?.email}</p>
                     </div>
@@ -242,6 +267,17 @@ function DashboardContent({ children }) {
                       <User className="w-4 h-4" />
                       View Profile
                     </Link>
+
+                    {user?.username && (
+                      <Link
+                        href={`/${user.username}`}
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                      >
+                        <Store className="w-4 h-4 text-emerald-600" />
+                        View Public Store
+                      </Link>
+                    )}
                     <Link
                       href="/profile/settings"
                       onClick={() => setUserMenuOpen(false)}

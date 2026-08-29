@@ -30,7 +30,6 @@ export async function GET(request, { params }) {
     const userLat = parseFloat(searchParams.get("lat") || "NaN");
     const userLng = parseFloat(searchParams.get("lng") || "NaN");
 
-    // Location is mandatory for location-dependent feed
     if (isNaN(userLat) || isNaN(userLng)) {
       return NextResponse.json(
         { success: false, error: "User location coordinates (lat, lng) are required for feed query." },
@@ -53,9 +52,8 @@ export async function GET(request, { params }) {
     const spatial = getGeohashNeighbors(userLat, userLng, 5);
     const spatialCells = spatial.allCells;
 
-    const nearbyBusinessMap = new Map(); // businessId -> { distanceKm, isFollowed }
+    const nearbyBusinessMap = new Map(); // businessId -> { distance, isFollowed }
 
-    // Fetch location_index entries matching surrounding geohash cells
     for (const cell of spatialCells) {
       try {
         const locQuery = query(
@@ -70,11 +68,10 @@ export async function GET(request, { params }) {
 
           if (bizCoords) {
             const dist = calculateHaversineDistance(userLat, userLng, bizCoords.lat, bizCoords.lng);
-            // Strict 10 km spatial cutoff enforcement
             if (dist <= 10) {
               nearbyBusinessMap.set(bizId, {
                 businessId: bizId,
-                distanceKm: dist,
+                distance: dist,
                 isFollowed: followedSet.has(bizId),
                 address: lData.address || null,
               });
@@ -86,7 +83,7 @@ export async function GET(request, { params }) {
       }
     }
 
-    // Also check followed businesses and add them if within 10km (or calculate their distance)
+    // Also load followed businesses
     if (followedSet.size > 0) {
       for (const bizId of followedSet) {
         if (!nearbyBusinessMap.has(bizId)) {
@@ -102,7 +99,7 @@ export async function GET(request, { params }) {
                 if (dist <= 10) {
                   nearbyBusinessMap.set(bizId, {
                     businessId: bizId,
-                    distanceKm: dist,
+                    distance: dist,
                     isFollowed: true,
                     address: bData.locationAddress || bData.address?.formatted || null,
                   });
@@ -124,7 +121,6 @@ export async function GET(request, { params }) {
     );
     const snapshot = await getDocs(postsQuery);
 
-    // Also load business details for enrichment
     const businessDetailsMap = new Map();
     try {
       const bizAllSnap = await getDocs(collection(db, "businesses"));
@@ -140,51 +136,47 @@ export async function GET(request, { params }) {
       const data = docSnap.data();
       const businessId = data.businessId || data.uid || data.userId || "unknown";
 
-      // Candidate must belong to a business within 10km radius
       const nearbyMeta = nearbyBusinessMap.get(businessId);
       const postCoords = extractCoords(data._geoloc) || extractCoords(data.location);
 
-      let distanceKm = nearbyMeta?.distanceKm ?? null;
-      if (distanceKm === null && postCoords) {
-        distanceKm = calculateHaversineDistance(userLat, userLng, postCoords.lat, postCoords.lng);
+      let distance = nearbyMeta?.distance ?? null;
+      if (distance === null && postCoords) {
+        distance = calculateHaversineDistance(userLat, userLng, postCoords.lat, postCoords.lng);
       }
 
-      // Enforce strict 10km cutoff
-      if (distanceKm === null || distanceKm > 10) {
+      if (distance === null || distance > 10) {
         continue;
       }
 
-      // Enforce max 2 posts per business diversity rule
       const currentCount = businessPostCount.get(businessId) || 0;
       if (currentCount >= 2) continue;
 
-      // 4. Calculate Exact Weighted Score: Score = (Follow * 0.4) + (Location * 0.4) + (Recency * 0.2)
+      // SPEC REQUIREMENT: Exact weighted scoring formula = (Follow * 0.55) + (Location * 0.35) + (Recency * 0.10)
       const isFollowed = followedSet.has(businessId);
       const followScore = isFollowed ? 100 : 0;
 
-      // Location Score (100 at 0km, linear decay down to 0 at 10km)
-      const locationScore = Math.max(0, 100 * (1 - distanceKm / 10));
+      // Location score (100 at 0km, linear decay down to 0 at 10km)
+      const locationScore = Math.max(0, 100 * (1 - distance / 10));
 
-      // Recency Score (100 at 0h, linear decay down to 0 at 72h)
+      // SPEC REQUIREMENT: Recency window = 168 hours (7 days)
       const createdAtMs = data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now();
       const hoursAgo = Math.max(0, (Date.now() - createdAtMs) / (1000 * 60 * 60));
-      const recencyScore = Math.max(0, 100 * (1 - hoursAgo / 72));
+      const recencyScore = Math.max(0, 100 * (1 - hoursAgo / 168));
 
       const totalScore = Math.round(
-        followScore * 0.4 + locationScore * 0.4 + recencyScore * 0.2
+        followScore * 0.55 + locationScore * 0.35 + recencyScore * 0.10
       );
 
       businessPostCount.set(businessId, currentCount + 1);
 
-      // Business details enrichment
       const bizInfo = businessDetailsMap.get(businessId) || {};
-      const businessName =
-        data.businessName || bizInfo.businessName || bizInfo.name || "Local Merchant";
-      const businessAvatar =
-        data.businessAvatar || bizInfo.profilePic || bizInfo.avatar || bizInfo.logo || "";
+      const authorId = businessId;
+      const authorAvatar =
+        data.businessAvatar || data.authorAvatar || bizInfo.profilePic || bizInfo.avatar || bizInfo.logo || "";
+      const authorName =
+        data.businessName || data.authorName || bizInfo.businessName || bizInfo.name || "Local Merchant";
       const username = data.username || bizInfo.username || businessId;
 
-      // Model Normalization
       const images =
         data.images && data.images.length > 0
           ? data.images
@@ -211,30 +203,43 @@ export async function GET(request, { params }) {
           ? data.commentsCount
           : 0;
 
+      // Recommendation type tag
+      let recommendationType = "NEARBY";
+      if (isFollowed && distance <= 2) {
+        recommendationType = "FOLLOWED_CLOSEBY";
+      } else if (isFollowed) {
+        recommendationType = "FOLLOWED";
+      } else if (distance <= 2) {
+        recommendationType = "HYPERLOCAL";
+      }
+
       scoredPosts.push({
         id: docSnap.id,
+        authorId,
+        authorName,
+        authorAvatar,
         businessId,
-        businessName,
-        businessAvatar,
+        businessName: authorName,
+        businessAvatar: authorAvatar,
         username,
         caption,
         images,
         category: data.category || data.businessType || "General",
-        distanceKm: Math.round(distanceKm * 10) / 10,
-        distanceFormatted: `${Math.round(distanceKm * 10) / 10} km`,
+        distance: Math.round(distance * 10) / 10,
+        distanceKm: Math.round(distance * 10) / 10,
+        distanceFormatted: `${Math.round(distance * 10) / 10} km`,
         likeCount,
         commentCount,
         isVerified: true,
         isFollowed,
+        recommendationType,
         score: totalScore,
         createdAt: data.createdAt || null,
       });
     }
 
-    // 5. Sort candidate posts by total score descending
     scoredPosts.sort((a, b) => b.score - a.score);
 
-    // 6. Pagination slicing
     const startIndex = (pageNum - 1) * limitNum;
     const paginatedPosts = scoredPosts.slice(startIndex, startIndex + limitNum);
     const hasMore = startIndex + limitNum < scoredPosts.length;

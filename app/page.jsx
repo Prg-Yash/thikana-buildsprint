@@ -123,10 +123,10 @@ export default function Home() {
       {/* ── NAVBAR ─────────────────────────────────────────────── */}
       <Navbar />
 
-      <main className="max-w-[1280px] mx-auto px-4 sm:px-6 py-6 space-y-8 pt-32">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-8 pt-32">
 
         {/* ── HERO ───────────────────────────────────────────────── */}
-        <section className="flex flex-col md:flex-row h-auto md:h-[520px] rounded-[32px] overflow-hidden">
+        <section className="flex flex-col md:flex-row h-auto md:h-130 rounded-[32px] overflow-hidden">
           <motion.div
             initial={{ opacity: 0, x: -40 }}
             animate={{ opacity: 1, x: 0 }}
@@ -337,7 +337,7 @@ export default function Home() {
                 </div>
               </div>
               <p className="text-[14px] text-[#777] leading-relaxed mb-8 italic">
-                "We were struggling with local discovery and maintaining three different apps. Thikana unified our storefront, payments, and website completely. Expanding our franchise has never been easier."
+                &quot;We were struggling with local discovery and maintaining three different apps. Thikana unified our storefront, payments, and website completely. Expanding our franchise has never been easier.&quot;
               </p>
               <button className="w-full bg-[#1A1A1A] text-white py-4 rounded-full text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#333] transition">
                 Read Case Study <ArrowRight className="w-4 h-4" />

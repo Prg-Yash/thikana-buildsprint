@@ -12,6 +12,7 @@ import {
   query,
   where,
   getDocs,
+  documentId,
 } from "firebase/firestore";
 import { PostCard } from "@/components/PostCard";
 import {
@@ -21,15 +22,31 @@ import {
   CheckCircle2,
   Bookmark,
   Grid,
-  ShoppingBag,
   Store,
   Calendar,
   Phone,
   Mail,
-  Edit,
-  ExternalLink,
   PlusSquare,
 } from "lucide-react";
+
+// Safe date formatter supporting Firestore Timestamps, ISO strings, and JS Dates
+function formatDateSafely(val) {
+  if (!val) return "Recently";
+  try {
+    let d = null;
+    if (typeof val === "object" && typeof val.seconds === "number") {
+      d = new Date(val.seconds * 1000);
+    } else if (typeof val === "string" || typeof val === "number") {
+      d = new Date(val);
+    }
+    if (d && !isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    }
+  } catch {
+    // Ignore error
+  }
+  return "Recently";
+}
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -43,8 +60,12 @@ export default function ProfilePage() {
 
   useEffect(() => {
     async function loadUserProfile() {
-      if (!user?.uid) return;
+      if (!user?.uid) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
+
       try {
         // 1. Fetch user doc & business doc from Firestore
         const userDocRef = doc(db, "users", user.uid);
@@ -80,11 +101,14 @@ export default function ProfilePage() {
           phone: uData.phone || bData?.phone || "",
           accountType: uData.role || uData.accountType || (bData ? "Business" : "Shopper"),
           avatar: uData.profilePic || uData.avatar || bData?.profilePic || user.photoURL || "",
-          createdAtFormatted: uData.createdAt ? new Date(uData.createdAt.seconds * 1000).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "Recently",
+          createdAtFormatted: formatDateSafely(uData.createdAt),
         });
 
-        // Helper to normalize raw Firestore post docs into expected PostCard fields
-        const normalizePostDoc = (id, data, defaultBizName, defaultBizAvatar, defaultUsername) => {
+        const defaultBizName = uData.name || uData.displayName || bData?.businessName || "Local Merchant";
+        const defaultBizAvatar = uData.profilePic || uData.avatar || bData?.profilePic || "";
+        const defaultUsername = uData.username || bData?.username || "store";
+
+        const normalizePostDoc = (id, data) => {
           const images =
             data.images && data.images.length > 0
               ? data.images
@@ -114,9 +138,9 @@ export default function ProfilePage() {
           return {
             id,
             ...data,
-            businessName: data.businessName || defaultBizName || "Local Merchant",
-            businessAvatar: data.businessAvatar || defaultBizAvatar || "",
-            username: data.username || defaultUsername || "store",
+            businessName: data.businessName || defaultBizName,
+            businessAvatar: data.businessAvatar || defaultBizAvatar,
+            username: data.username || defaultUsername,
             caption,
             images,
             category: data.category || data.businessType || "General",
@@ -126,38 +150,27 @@ export default function ProfilePage() {
           };
         };
 
-        const defaultBizName = uData.name || uData.displayName || bData?.businessName || "Local Merchant";
-        const defaultBizAvatar = uData.profilePic || uData.avatar || bData?.profilePic || "";
-        const defaultUsername = uData.username || bData?.username || "store";
-
-        // 3. Fetch user's own published posts
+        // 3. Multi-key published post queries (`uid`, `userId`, `businessId`, `authorId`)
         try {
-          const qUid = query(
-            collection(db, "posts"),
-            where("uid", "==", user.uid)
-          );
-          const uidSnap = await getDocs(qUid);
-
-          const qUser = query(
-            collection(db, "posts"),
-            where("userId", "==", user.uid)
-          );
-          const userSnap = await getDocs(qUser);
-
           const postsMap = new Map();
-          uidSnap.docs.forEach((d) =>
-            postsMap.set(d.id, normalizePostDoc(d.id, d.data(), defaultBizName, defaultBizAvatar, defaultUsername))
-          );
-          userSnap.docs.forEach((d) =>
-            postsMap.set(d.id, normalizePostDoc(d.id, d.data(), defaultBizName, defaultBizAvatar, defaultUsername))
-          );
+          const queryKeys = ["uid", "userId", "businessId", "authorId"];
+
+          for (const key of queryKeys) {
+            try {
+              const q = query(collection(db, "posts"), where(key, "==", user.uid));
+              const snap = await getDocs(q);
+              snap.docs.forEach((d) => postsMap.set(d.id, normalizePostDoc(d.id, d.data())));
+            } catch {
+              // Ignore single key error
+            }
+          }
 
           setUserPosts(Array.from(postsMap.values()));
         } catch (e) {
           console.warn("Could not fetch user published posts:", e.message);
         }
 
-        // 4. Fetch user's saved/bookmarked post IDs and details
+        // 4. Batch saved/bookmarked posts fetching
         try {
           const bookmarkSnap = await getDocs(
             collection(db, "users", user.uid, "bookmarks")
@@ -166,13 +179,17 @@ export default function ProfilePage() {
 
           if (bookmarkPostIds.length > 0) {
             const savedList = [];
-            for (const pid of bookmarkPostIds) {
-              const pSnap = await getDoc(doc(db, "posts", pid));
-              if (pSnap.exists()) {
-                savedList.push(
-                  normalizePostDoc(pSnap.id, pSnap.data(), "Local Merchant", "", "store")
-                );
-              }
+            // Batch fetch in chunks of 10
+            for (let i = 0; i < bookmarkPostIds.length; i += 10) {
+              const chunk = bookmarkPostIds.slice(i, i + 10);
+              const qSaved = query(
+                collection(db, "posts"),
+                where(documentId(), "in", chunk)
+              );
+              const savedSnap = await getDocs(qSaved);
+              savedSnap.docs.forEach((d) => {
+                savedList.push(normalizePostDoc(d.id, d.data()));
+              });
             }
             setSavedPosts(savedList);
           }
@@ -212,7 +229,6 @@ export default function ProfilePage() {
     <div className="max-w-4xl mx-auto space-y-6">
       {/* 1. Profile Header Card */}
       <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 overflow-hidden shadow-sm">
-        {/* Cover Banner */}
         <div className="relative h-36 sm:h-48 bg-gradient-to-r from-[#1A1A1A] via-[#2A2A2A] to-[#C8B99A]/30">
           {businessData?.coverPic && (
             <Image
@@ -254,7 +270,6 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Quick Action Links */}
             <div className="flex items-center gap-2">
               <Link
                 href="/profile/settings"
@@ -276,7 +291,6 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Key Details */}
           <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 font-medium pt-3 border-t border-[#E5E0D8] dark:border-white/10">
             <span className="flex items-center gap-1.5">
               <Mail className="w-3.5 h-3.5 text-gray-400" />

@@ -31,18 +31,47 @@ export const AuthProvider = ({ children }) => {
         try {
           const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
           const userData = userDoc.exists() ? userDoc.data() : {};
+
+          let bizData = {};
+          try {
+            const bizDoc = await getDoc(doc(db, "businesses", firebaseUser.uid));
+            if (bizDoc.exists()) {
+              bizData = bizDoc.data();
+            }
+          } catch {
+            // Ignore
+          }
+
+          const resolvedName =
+            userData.name ||
+            userData.displayName ||
+            userData.fullName ||
+            bizData.businessName ||
+            firebaseUser.displayName ||
+            "User";
+
+          const resolvedAvatar =
+            userData.profilePic ||
+            userData.avatar ||
+            bizData.profilePic ||
+            firebaseUser.photoURL ||
+            "";
+
           setUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
-            displayName: firebaseUser.displayName || userData.fullName || "",
-            photoURL: firebaseUser.photoURL || "",
+            displayName: resolvedName,
+            name: resolvedName,
+            photoURL: resolvedAvatar,
+            profilePic: resolvedAvatar,
             ...userData,
+            ...bizData,
           });
         } catch {
           setUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
-            displayName: firebaseUser.displayName || "",
+            displayName: firebaseUser.displayName || "User",
           });
         }
       } else {

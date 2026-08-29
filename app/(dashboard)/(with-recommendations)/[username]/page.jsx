@@ -11,6 +11,8 @@ import {
   getDocs,
   doc,
   getDoc,
+  addDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { PostCard } from "@/components/PostCard";
 import {
@@ -27,6 +29,7 @@ import {
   Info,
   Calendar,
   X,
+  Wrench,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -37,49 +40,160 @@ export default function StorefrontPage({ params }) {
   const [storeData, setStoreData] = useState(null);
   const [posts, setPosts] = useState([]);
   const [products, setProducts] = useState([]);
+  const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("posts"); // "posts" | "products" | "info"
+  const [activeTab, setActiveTab] = useState("posts"); // "posts" | "products" | "services" | "info"
   const [isFollowing, setIsFollowing] = useState(false);
   const [callModalOpen, setCallModalOpen] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [bookModalOpen, setBookModalOpen] = useState(false);
+  const [selectedService, setSelectedService] = useState(null);
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [bookingDate, setBookingDate] = useState("");
+  const [bookingTime, setBookingTime] = useState("");
+  const [submittingBooking, setSubmittingBooking] = useState(false);
 
   useEffect(() => {
     async function loadStorefrontData() {
       setLoading(true);
       try {
         let fetchedStore = null;
+        let bizId = null;
 
-        // Query Firestore `users` or `businesses` collection
-        const qUsers = query(collection(db, "users"), where("username", "==", username));
-        const userSnap = await getDocs(qUsers);
+        // Query Firestore `businesses` or `users` collection by username
+        const qBiz = query(collection(db, "businesses"), where("username", "==", username));
+        const bizSnap = await getDocs(qBiz);
 
-        if (!userSnap.empty) {
-          const uDoc = userSnap.docs[0].data();
-          fetchedStore = { id: userSnap.docs[0].id, ...uDoc };
+        if (!bizSnap.empty) {
+          const bDoc = bizSnap.docs[0].data();
+          bizId = bDoc.adminId || bDoc.ownerId || bizSnap.docs[0].id;
+          fetchedStore = {
+            id: bizId,
+            ...bDoc,
+            name: bDoc.businessName || bDoc.adminName || "Local Merchant",
+            logo: bDoc.profilePic || bDoc.avatar || bDoc.logo || "",
+            coverImage: bDoc.coverPic || bDoc.coverImage || "",
+            address: bDoc.locationAddress || bDoc.address?.formatted || "Location address not set",
+            operatingHours: Array.isArray(bDoc.operationalHours)
+              ? bDoc.operationalHours.filter(h => h.enabled).map(h => `${h.day}: ${h.openTime}-${h.closeTime}`).join(", ") || "Mon-Sat 9 AM - 8 PM"
+              : bDoc.operatingHours || "Mon-Sat 9 AM - 8 PM",
+            bio: bDoc.bio || bDoc.description || (bDoc.businessTags ? bDoc.businessTags.join(" • ") : "Verified local merchant on Thikana."),
+          };
         } else {
-          // Check `businesses` collection
-          const qBiz = query(collection(db, "businesses"), where("username", "==", username));
-          const bizSnap = await getDocs(qBiz);
-          if (!bizSnap.empty) {
-            const bDoc = bizSnap.docs[0].data();
-            fetchedStore = { id: bizSnap.docs[0].id, ...bDoc };
+          const qUsers = query(collection(db, "users"), where("username", "==", username));
+          const userSnap = await getDocs(qUsers);
+          if (!userSnap.empty) {
+            const uDoc = userSnap.docs[0].data();
+            bizId = uDoc.uid || userSnap.docs[0].id;
+            fetchedStore = {
+              id: bizId,
+              ...uDoc,
+              name: uDoc.name || uDoc.displayName || "Local Merchant",
+              logo: uDoc.profilePic || uDoc.avatar || "",
+              coverImage: uDoc.coverPic || "",
+              address: uDoc.locationAddress || "Location address not set",
+              operatingHours: "Mon-Sat 9 AM - 8 PM",
+              bio: uDoc.bio || "Verified local business on Thikana.",
+            };
           }
         }
 
         setStoreData(fetchedStore);
 
-        // Fetch business posts
-        try {
-          const postsQuery = query(
-            collection(db, "posts"),
-            where("username", "==", username)
-          );
-          const postSnap = await getDocs(postsQuery);
-          if (!postSnap.empty) {
-            setPosts(postSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        if (bizId) {
+          // Helper to normalize raw Firestore post docs into expected PostCard fields
+          const normalizePostDoc = (id, data, defaultBizName, defaultBizAvatar, defaultUsername) => {
+            const images =
+              data.images && data.images.length > 0
+                ? data.images
+                : data.mediaUrl
+                ? [data.mediaUrl]
+                : data.imageUrl
+                ? [data.imageUrl]
+                : [];
+
+            const caption = data.caption || data.content || data.description || "";
+            const likeCount =
+              typeof data.likeCount === "number"
+                ? data.likeCount
+                : typeof data.likesCount === "number"
+                ? data.likesCount
+                : typeof data.likes === "number"
+                ? data.likes
+                : data.interactions?.likeCount || 0;
+
+            const commentCount =
+              typeof data.commentCount === "number"
+                ? data.commentCount
+                : typeof data.commentsCount === "number"
+                ? data.commentsCount
+                : 0;
+
+            return {
+              id,
+              ...data,
+              businessName: data.businessName || defaultBizName,
+              businessAvatar: data.businessAvatar || defaultBizAvatar,
+              username: data.username || defaultUsername,
+              caption,
+              images,
+              category: data.category || data.businessType || "General",
+              likeCount,
+              commentCount,
+              isVerified: true,
+            };
+          };
+
+          const defaultName = fetchedStore?.name || "Local Merchant";
+          const defaultAvatar = fetchedStore?.logo || "";
+
+          // Fetch business posts by uid, userId, businessId, or username
+          try {
+            const postsMap = new Map();
+
+            const qUid = query(collection(db, "posts"), where("uid", "==", bizId));
+            const uidSnap = await getDocs(qUid);
+            uidSnap.docs.forEach((d) => postsMap.set(d.id, normalizePostDoc(d.id, d.data(), defaultName, defaultAvatar, username)));
+
+            const qUser = query(collection(db, "posts"), where("userId", "==", bizId));
+            const userSnap = await getDocs(qUser);
+            userSnap.docs.forEach((d) => postsMap.set(d.id, normalizePostDoc(d.id, d.data(), defaultName, defaultAvatar, username)));
+
+            const qBiz = query(collection(db, "posts"), where("businessId", "==", bizId));
+            const bizSnapPosts = await getDocs(qBiz);
+            bizSnapPosts.docs.forEach((d) => postsMap.set(d.id, normalizePostDoc(d.id, d.data(), defaultName, defaultAvatar, username)));
+
+            const qUserHandle = query(collection(db, "posts"), where("username", "==", username));
+            const handleSnap = await getDocs(qUserHandle);
+            handleSnap.docs.forEach((d) => postsMap.set(d.id, normalizePostDoc(d.id, d.data(), defaultName, defaultAvatar, username)));
+
+            setPosts(Array.from(postsMap.values()));
+          } catch (err) {
+            console.warn("Could not fetch store posts:", err);
           }
-        } catch {
-          // Ignore query failure
+
+          // Fetch business products catalog
+          try {
+            const qProd = query(collection(db, "products"), where("userId", "==", bizId));
+            const prodSnap = await getDocs(qProd);
+            if (!prodSnap.empty) {
+              setProducts(prodSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+            }
+          } catch (err) {
+            console.warn("Could not fetch store products:", err);
+          }
+
+          // Fetch business services catalog
+          try {
+            const qServ = query(collection(db, "services"), where("userId", "==", bizId));
+            const servSnap = await getDocs(qServ);
+            if (!servSnap.empty) {
+              setServices(servSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+            }
+          } catch (err) {
+            console.warn("Could not fetch store services:", err);
+          }
         }
       } catch (err) {
         console.error("Error loading storefront:", err);
@@ -102,12 +216,59 @@ export default function StorefrontPage({ params }) {
     }
   };
 
-  const handleRequestCall = (e) => {
+  const handleRequestCall = async (e) => {
     e.preventDefault();
     if (!phoneNumber) return;
-    toast.success("Call request submitted!");
-    setCallModalOpen(false);
-    setPhoneNumber("");
+
+    try {
+      await addDoc(collection(db, "call_requests"), {
+        merchantId: storeData?.id || null,
+        merchantName: storeData?.name || "Merchant",
+        phoneNumber: phoneNumber.trim(),
+        status: "Pending",
+        createdAt: serverTimestamp(),
+      });
+      toast.success("Callback request submitted! Merchant will reach out shortly.");
+    } catch (err) {
+      console.error("Error submitting call request:", err);
+      toast.error("Failed to submit call request");
+    } finally {
+      setCallModalOpen(false);
+      setPhoneNumber("");
+    }
+  };
+
+  const handleBookAppointment = async (e) => {
+    e.preventDefault();
+    if (!clientName.trim() || !clientPhone.trim() || !selectedService) return;
+
+    setSubmittingBooking(true);
+    try {
+      await addDoc(collection(db, "appointments"), {
+        merchantId: storeData.id,
+        serviceId: selectedService.id,
+        serviceTitle: selectedService.title || selectedService.name,
+        clientName: clientName.trim(),
+        clientPhone: clientPhone.trim(),
+        bookingDate: bookingDate || new Date().toISOString().split("T")[0],
+        bookingTime: bookingTime || "10:00 AM",
+        status: "Pending",
+        createdAt: serverTimestamp(),
+      });
+
+      toast.success("Appointment booking submitted!");
+      setBookModalOpen(false);
+      setClientName("");
+      setClientPhone("");
+      setBookingDate("");
+      setBookingTime("");
+      setSelectedService(null);
+    } catch (err) {
+      console.error("Error booking appointment:", err);
+      toast.error("Failed to submit booking.");
+    } finally {
+      setSubmittingBooking(false);
+    }
   };
 
   if (loading) {
@@ -257,7 +418,19 @@ export default function StorefrontPage({ params }) {
           }`}
         >
           <ShoppingBag className="w-4 h-4" />
-          <span>Products</span>
+          <span>Products ({products.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("services")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition ${
+            activeTab === "services"
+              ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
+              : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
+          }`}
+        >
+          <Wrench className="w-4 h-4" />
+          <span>Services ({services.length})</span>
         </button>
 
         <button
@@ -286,11 +459,82 @@ export default function StorefrontPage({ params }) {
         )}
 
         {activeTab === "products" && (
-          <div className="p-8 text-center bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 text-xs text-gray-500 space-y-2">
-            <ShoppingBag className="w-8 h-8 text-gray-400 mx-auto" />
-            <p className="font-bold text-[#1A1A1A] dark:text-white">Store Catalog</p>
-            <p>Products from this store will appear here.</p>
-          </div>
+          products.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {products.map((prod) => (
+                <div key={prod.id} className="p-4 rounded-3xl bg-white dark:bg-[#1A1A1A] border border-[#E5E0D8] dark:border-white/10 space-y-3 shadow-sm">
+                  {prod.imageUrl && (
+                    <div className="relative aspect-square rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+                      <Image src={prod.imageUrl} alt={prod.name || "Product"} fill className="object-cover" />
+                    </div>
+                  )}
+                  <div>
+                    <h4 className="font-bold text-sm text-[#1A1A1A] dark:text-white">{prod.name}</h4>
+                    {prod.description && <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{prod.description}</p>}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-white/5">
+                    <span className="font-black text-sm text-[#1A1A1A] dark:text-white">₹{prod.price || 0}</span>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      Stock: {prod.quantity ?? 0}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 text-xs text-gray-500 space-y-2">
+              <ShoppingBag className="w-8 h-8 text-gray-400 mx-auto" />
+              <p className="font-bold text-[#1A1A1A] dark:text-white">Store Catalog</p>
+              <p>No products listed in catalog yet.</p>
+            </div>
+          )
+        )}
+
+        {activeTab === "services" && (
+          services.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {services.map((serv) => (
+                <div key={serv.id} className="p-4 rounded-3xl bg-white dark:bg-[#1A1A1A] border border-[#E5E0D8] dark:border-white/10 space-y-3 shadow-sm flex flex-col justify-between">
+                  <div className="space-y-2">
+                    {serv.imageUrl && (
+                      <div className="relative aspect-video rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+                        <Image src={serv.imageUrl} alt={serv.title || serv.name} fill className="object-cover" />
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-gray-400">{serv.category || "General"}</span>
+                      <h4 className="font-bold text-sm text-[#1A1A1A] dark:text-white">{serv.title || serv.name}</h4>
+                      {serv.description && <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{serv.description}</p>}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-100 dark:border-white/5 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-black text-sm text-[#1A1A1A] dark:text-white">₹{serv.price || 0}</span>
+                      <span className="text-gray-400 flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> {serv.durationMinutes || 30} Mins
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedService(serv);
+                        setBookModalOpen(true);
+                      }}
+                      className="w-full py-2 bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] rounded-xl text-xs font-bold transition hover:opacity-90 flex items-center justify-center gap-1.5"
+                    >
+                      <Calendar className="w-3.5 h-3.5" /> Book Slot
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 text-xs text-gray-500 space-y-2">
+              <Wrench className="w-8 h-8 text-gray-400 mx-auto" />
+              <p className="font-bold text-[#1A1A1A] dark:text-white">Service Catalog</p>
+              <p>No service offerings listed yet.</p>
+            </div>
+          )
         )}
 
         {activeTab === "info" && (
@@ -336,6 +580,87 @@ export default function StorefrontPage({ params }) {
                 className="w-full py-3 bg-[#1A1A1A] text-white rounded-xl text-xs font-bold"
               >
                 Submit
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Book Appointment Modal */}
+      {bookModalOpen && selectedService && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl p-6 max-w-sm w-full border border-[#E5E0D8] dark:border-white/10 space-y-4 relative">
+            <button
+              onClick={() => setBookModalOpen(false)}
+              className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-700"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div>
+              <span className="text-[10px] font-bold text-gray-400 uppercase">Book Appointment</span>
+              <h3 className="font-black text-base text-[#1A1A1A] dark:text-white">
+                {selectedService.title || selectedService.name}
+              </h3>
+              <p className="text-xs font-bold text-emerald-600">₹{selectedService.price || 0} • {selectedService.durationMinutes || 30} Mins</p>
+            </div>
+
+            <form onSubmit={handleBookAppointment} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Your Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                  placeholder="e.g. John Doe"
+                  className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Your Phone Number</label>
+                <input
+                  type="tel"
+                  required
+                  value={clientPhone}
+                  onChange={(e) => setClientPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={bookingDate}
+                    onChange={(e) => setBookingDate(e.target.value)}
+                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2 text-xs text-[#1A1A1A] dark:text-white outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Time Slot</label>
+                  <input
+                    type="text"
+                    required
+                    value={bookingTime}
+                    onChange={(e) => setBookingTime(e.target.value)}
+                    placeholder="e.g. 10:30 AM"
+                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2 text-xs text-[#1A1A1A] dark:text-white outline-none"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submittingBooking}
+                className="w-full py-3 mt-2 bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] rounded-xl text-xs font-bold transition hover:opacity-90"
+              >
+                {submittingBooking ? "Confirming..." : "Confirm Appointment"}
               </button>
             </form>
           </div>

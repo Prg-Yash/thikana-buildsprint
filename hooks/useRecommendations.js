@@ -16,11 +16,14 @@ export function useFeed(userId, initialLimit = 10) {
   const isFetching = useRef(false);
 
   // Helper to generate scoped cache key based on userId and location
-  const getCacheKey = (location) => {
-    const userPart = userId || "guest";
-    const locPart = location ? `${location.lat.toFixed(2)}_${location.lng.toFixed(2)}` : "no_loc";
-    return `thikana_feed_cache_${userPart}_${locPart}`;
-  };
+  const getCacheKey = useCallback(
+    (location) => {
+      const userPart = userId || "guest";
+      const locPart = location ? `${location.lat.toFixed(2)}_${location.lng.toFixed(2)}` : "no_loc";
+      return `thikana_feed_cache_${userPart}_${locPart}`;
+    },
+    [userId]
+  );
 
   // Request browser geolocation
   const requestLocation = useCallback(() => {
@@ -40,13 +43,13 @@ export function useFeed(userId, initialLimit = 10) {
         },
         (err) => {
           if (process.env.NODE_ENV === "development") {
-            // Silently log or suppress geolocation timeout warning in dev mode
+            // Silently log in dev mode
           }
           setLocationDenied(true);
           setCoords(null);
           resolve(null);
         },
-        { timeout: 30000, enableHighAccuracy: false, maximumAge: 300000 }
+        { timeout: 15000, enableHighAccuracy: false, maximumAge: 300000 }
       );
     });
   }, []);
@@ -60,12 +63,10 @@ export function useFeed(userId, initialLimit = 10) {
 
       let currentCoords = coords;
 
-      // Request location if not set yet and location not denied
       if (!currentCoords && !locationDenied) {
         currentCoords = await requestLocation();
       }
 
-      // CRITICAL FINDING FIX: Halt location-dependent feed queries if location is unavailable/denied
       if (!currentCoords) {
         setLoading(false);
         setPosts([]);
@@ -76,21 +77,22 @@ export function useFeed(userId, initialLimit = 10) {
 
       const cacheKey = getCacheKey(currentCoords);
 
-      // Check client-side cache for initial load
       if (isRefresh && pageNum === 1) {
         try {
           const cached = sessionStorage.getItem(cacheKey);
           if (cached) {
-            const { timestamp, data } = JSON.parse(cached);
+            const { timestamp, data, hasMore: cachedHasMore, page: cachedPage } = JSON.parse(cached);
             if (Date.now() - timestamp < CACHE_TTL_MS && Array.isArray(data) && data.length > 0) {
               setPosts(data);
+              setHasMore(Boolean(cachedHasMore));
+              setPage(cachedPage || 1);
               setLoading(false);
               isFetching.current = false;
               return;
             }
           }
         } catch {
-          // Ignore cache parse error
+          // Ignore cache error
         }
       }
 
@@ -120,7 +122,12 @@ export function useFeed(userId, initialLimit = 10) {
           try {
             sessionStorage.setItem(
               cacheKey,
-              JSON.stringify({ timestamp: Date.now(), data: fetchedPosts })
+              JSON.stringify({
+                timestamp: Date.now(),
+                data: fetchedPosts,
+                hasMore: data.hasMore ?? false,
+                page: 1,
+              })
             );
           } catch {
             // Ignore quota error
@@ -139,26 +146,26 @@ export function useFeed(userId, initialLimit = 10) {
         isFetching.current = false;
       }
     },
-    [userId, initialLimit, coords, locationDenied, requestLocation]
+    [userId, initialLimit, coords, locationDenied, requestLocation, getCacheKey]
   );
 
   useEffect(() => {
     fetchFeed(true, 1);
-  }, [userId]);
+  }, [userId, fetchFeed]);
 
-  const loadMore = () => {
+  const loadMore = useCallback(() => {
     if (!loading && hasMore) {
       fetchFeed(false, page + 1);
     }
-  };
+  }, [loading, hasMore, fetchFeed, page]);
 
-  const retryLocation = async () => {
+  const retryLocation = useCallback(async () => {
     setLocationDenied(false);
     const newCoords = await requestLocation();
     if (newCoords) {
       fetchFeed(true, 1);
     }
-  };
+  }, [requestLocation, fetchFeed]);
 
   return {
     posts,
