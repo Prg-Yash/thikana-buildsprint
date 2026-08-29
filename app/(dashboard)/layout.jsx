@@ -38,12 +38,13 @@ const NAV_ITEMS = [
   { name: "Home Feed", href: "/feed", icon: Home },
   { name: "Discover / Map", href: "/map", icon: Compass },
   { name: "AI Business Advisor", href: "/profile/ai-advisor", icon: Bot },
+  { name: "Business Profile", href: "/profile", icon: User },
   { name: "Analytics Dashboard", href: "/profile/analytics", icon: BarChart3 },
   { name: "Inventory Management", href: "/profile/inventory", icon: Package },
   { name: "Store Services", href: "/profile/services", icon: Wrench },
   { name: "Create Post", href: "/posts/create", icon: PlusSquare },
   { name: "Website Builder", href: "/websites", icon: Globe },
-  { name: "Business Dashboard", href: "/business-dashboard", icon: BarChart3 },
+  { name: "Business Dashboard", href: "/business-dashboard", icon: Store },
   { name: "Settings", href: "/profile/settings", icon: Settings },
 ];
 
@@ -92,8 +93,10 @@ function DashboardContent({ children }) {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    if (pathname !== "/search") {
+      router.push(searchQuery.trim() ? `/search?q=${encodeURIComponent(searchQuery.trim())}` : "/search");
+    } else if (searchQuery.trim()) {
+      router.replace(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
 
@@ -145,8 +148,8 @@ function DashboardContent({ children }) {
                   key={item.href}
                   href={item.href}
                   className={`flex items-center gap-3.5 px-3 py-3 rounded-2xl text-sm font-semibold transition-colors ${isActive
-                      ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] shadow-sm"
-                      : "text-gray-600 dark:text-gray-400 hover:bg-[#EEEAE4] dark:hover:bg-white/5 hover:text-[#1A1A1A] dark:hover:text-white"
+                    ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] shadow-sm"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-[#EEEAE4] dark:hover:bg-white/5 hover:text-[#1A1A1A] dark:hover:text-white"
                     }`}
                   title={collapsed ? item.name : undefined}
                 >
@@ -159,7 +162,10 @@ function DashboardContent({ children }) {
 
           {/* Sidebar Footer User Info */}
           {!collapsed && user && (
-            <div className="p-4 border-t border-[#E5E0D8] dark:border-white/10 bg-[#FBF9F5] dark:bg-[#161616]">
+            <Link
+              href="/profile"
+              className="p-4 border-t border-[#E5E0D8] dark:border-white/10 bg-[#FBF9F5] dark:bg-[#161616] hover:bg-[#EEEAE4] dark:hover:bg-white/5 transition block"
+            >
               <div className="flex items-center gap-3">
                 <div className="relative w-9 h-9 rounded-full bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
                   {(user?.profilePic || user?.photoURL) ? (
@@ -180,7 +186,7 @@ function DashboardContent({ children }) {
                   <p className="text-[11px] text-gray-500 truncate">{user?.email}</p>
                 </div>
               </div>
-            </div>
+            </Link>
           )}
         </motion.aside>
 
@@ -203,8 +209,19 @@ function DashboardContent({ children }) {
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search stores, posts, or products..."
+                  onFocus={() => {
+                    if (pathname !== "/search") {
+                      router.push(searchQuery.trim() ? `/search?q=${encodeURIComponent(searchQuery.trim())}` : "/search");
+                    }
+                  }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSearchQuery(val);
+                    if (pathname === "/search") {
+                      router.replace(val.trim() ? `/search?q=${encodeURIComponent(val.trim())}` : "/search");
+                    }
+                  }}
+                  placeholder="Search local businesses, stores, products..."
                   className="w-full bg-[#F2EFE9] dark:bg-[#262626] border border-transparent focus:border-[#1A1A1A] dark:focus:border-white/20 rounded-2xl py-2 pl-10 pr-4 text-xs sm:text-sm font-medium text-[#1A1A1A] dark:text-white placeholder-gray-400 outline-none transition"
                 />
               </form>
@@ -360,8 +377,8 @@ function DashboardContent({ children }) {
                       href={item.href}
                       onClick={() => setMobileDrawerOpen(false)}
                       className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition ${isActive
-                          ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
-                          : "bg-[#F7F6F3] dark:bg-[#252525] text-gray-700 dark:text-gray-200"
+                        ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
+                        : "bg-[#F7F6F3] dark:bg-[#252525] text-gray-700 dark:text-gray-200"
                         }`}
                     >
                       <Icon className="w-4 h-4 shrink-0" />
