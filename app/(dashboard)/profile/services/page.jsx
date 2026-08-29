@@ -1,21 +1,18 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
-import { db } from "@/lib/firebase";
+import { db, storage } from "@/lib/firebase";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { doc, updateDoc } from "firebase/firestore";
 import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+  subscribeUserServices,
+  subscribeUserAppointments,
+  saveServiceItem,
+  deleteServiceItem,
+} from "@/lib/services-operations";
 import {
   Wrench,
   PlusSquare,
@@ -28,6 +25,12 @@ import {
   X,
   Check,
   AlertCircle,
+  ImagePlus,
+  List,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  User,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -43,6 +46,7 @@ const DEFAULT_WEEKLY_SCHEDULE = [
 
 export default function ProfileServicesPage() {
   const { user } = useAuth();
+  const fileInputRef = useRef(null);
 
   const [services, setServices] = useState([]);
   const [appointments, setAppointments] = useState([]);
@@ -50,6 +54,8 @@ export default function ProfileServicesPage() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("services"); // "services" | "appointments"
   const [searchQuery, setSearchQuery] = useState("");
+  const [appointmentViewMode, setAppointmentViewMode] = useState("calendar"); // "calendar" | "table"
+  const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
 
   // Add / Edit Service Modal State
   const [modalOpen, setBookModalOpen] = useState(false);
@@ -61,76 +67,44 @@ export default function ProfileServicesPage() {
   const [duration, setDuration] = useState("30");
   const [category, setCategory] = useState("Salon & Beauty");
   const [description, setDescription] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
   const [weeklySchedule, setWeeklySchedule] = useState(DEFAULT_WEEKLY_SCHEDULE);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    async function loadServicesData() {
-      if (!user?.uid) {
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      setError(null);
-
-      try {
-        // CANONICAL PATH: users/{userId}/services
-        const subSnap = await getDocs(collection(db, "users", user.uid, "services"));
-        const fetched = subSnap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            title: data.title || data.name || "General Service",
-            priceType: data.priceType || (data.approxPrice ? "variable" : "fixed"),
-            price: parseFloat(data.price || "0"),
-            approxPrice: data.approxPrice || "",
-            duration: parseInt(data.duration || data.durationMinutes || "30", 10),
-            category: data.category || "General Services",
-            description: data.description || "",
-            imageUrl: data.imageUrl || "",
-            isAvailable: data.isAvailable ?? true,
-            weeklySchedule: Array.isArray(data.weeklySchedule) ? data.weeklySchedule : DEFAULT_WEEKLY_SCHEDULE,
-          };
-        });
-
-        setServices(fetched);
-
-        // CANONICAL APPOINTMENT DUAL QUERY
-        const appMap = new Map();
-        try {
-          const appSubSnap = await getDocs(collection(db, "users", user.uid, "appointments"));
-          appSubSnap.docs.forEach((d) => appMap.set(d.id, { id: d.id, ...d.data() }));
-
-          const appTopSnap = await getDocs(
-            query(collection(db, "appointments"), where("merchantId", "==", user.uid))
-          );
-          appTopSnap.docs.forEach((d) => appMap.set(d.id, { id: d.id, ...d.data() }));
-        } catch (e) {
-          console.warn("Could not fetch appointments:", e.message);
-        }
-
-        const normalizedAppointments = Array.from(appMap.values()).map((a) => ({
-          id: a.id,
-          clientName: a.clientName || a.customerName || "Client",
-          clientPhone: a.clientPhone || a.customerPhone || a.phoneNumber || "+91 98765 43210",
-          serviceTitle: a.serviceTitle || a.serviceName || "General Service",
-          bookingDate: a.bookingDate || a.date || "Today",
-          bookingTime: a.bookingTime || a.timeSlot || a.time || "10:00 AM",
-          status: a.status || "Pending",
-          createdAt: a.createdAt || null,
-        }));
-
-        setAppointments(normalizedAppointments);
-      } catch (err) {
-        console.error("Error loading services:", err);
-        setError("Failed to load services catalog from database.");
-      } finally {
-        setLoading(false);
-      }
+    if (!user?.uid) {
+      setLoading(false);
+      return;
     }
+    setLoading(true);
+    setError(null);
 
-    loadServicesData();
+    // CANONICAL SHARED SERVICE LAYER REAL-TIME LISTENERS
+    const unsubServices = subscribeUserServices(
+      user.uid,
+      (fetchedServices) => {
+        setServices(fetchedServices);
+        setLoading(false);
+      },
+      (err) => {
+        setError("Failed to load services catalog.");
+        setLoading(false);
+      }
+    );
+
+    const unsubAppointments = subscribeUserAppointments(
+      user.uid,
+      (fetchedAppointments) => {
+        setAppointments(fetchedAppointments);
+      },
+      () => {}
+    );
+
+    return () => {
+      unsubServices();
+      unsubAppointments();
+    };
   }, [user]);
 
   const handleOpenAddModal = () => {
@@ -142,23 +116,32 @@ export default function ProfileServicesPage() {
     setDuration("30");
     setCategory("Salon & Beauty");
     setDescription("");
-    setImageUrl("");
+    setImageFile(null);
+    setImagePreview("");
     setWeeklySchedule(DEFAULT_WEEKLY_SCHEDULE);
     setBookModalOpen(true);
   };
 
   const handleOpenEditModal = (serv) => {
     setEditingService(serv);
-    setTitle(serv.title || "");
+    setTitle(serv.title || serv.name || "");
     setPriceType(serv.priceType || (serv.approxPrice ? "variable" : "fixed"));
     setPrice(String(serv.price || ""));
     setApproxPrice(serv.approxPrice || "");
-    setDuration(String(serv.duration || "30"));
+    setDuration(String(serv.duration || serv.durationMinutes || "30"));
     setCategory(serv.category || "Salon & Beauty");
     setDescription(serv.description || "");
-    setImageUrl(serv.imageUrl || "");
+    setImageFile(null);
+    setImagePreview(serv.imageUrl || "");
     setWeeklySchedule(Array.isArray(serv.weeklySchedule) ? serv.weeklySchedule : DEFAULT_WEEKLY_SCHEDULE);
     setBookModalOpen(true);
+  };
+
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
   };
 
   const handleToggleDay = (idx) => {
@@ -177,36 +160,64 @@ export default function ProfileServicesPage() {
     e.preventDefault();
     if (!title.trim() || !user?.uid) return;
 
-    setIsSubmitting(true);
-    const serviceDoc = {
-      title: title.trim(),
-      name: title.trim(),
-      priceType,
-      price: parseFloat(price || "0"),
-      approxPrice: priceType === "variable" ? approxPrice.trim() : null,
-      duration: parseInt(duration || "30", 10),
-      durationMinutes: parseInt(duration || "30", 10),
-      category,
-      description: description.trim(),
-      imageUrl: imageUrl.trim() || "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=600&auto=format&fit=crop&q=80",
-      weeklySchedule,
-      isAvailable: editingService ? editingService.isAvailable ?? true : true,
-      updatedAt: serverTimestamp(),
-      ...(editingService && editingService.createdAt ? { createdAt: editingService.createdAt } : { createdAt: serverTimestamp() }),
+    const getCategoryFallbackImage = (cat, titleStr) => {
+      const lower = (cat + " " + titleStr).toLowerCase();
+      if (lower.includes("food") || lower.includes("catering") || lower.includes("pizza") || lower.includes("bakery") || lower.includes("dining") || lower.includes("party")) {
+        return "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&auto=format&fit=crop&q=80";
+      }
+      if (lower.includes("clinic") || lower.includes("health") || lower.includes("medical") || lower.includes("doctor")) {
+        return "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=600&auto=format&fit=crop&q=80";
+      }
+      if (lower.includes("repair") || lower.includes("maintenance") || lower.includes("mechanic")) {
+        return "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80";
+      }
+      if (lower.includes("fitness") || lower.includes("gym") || lower.includes("yoga")) {
+        return "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600&auto=format&fit=crop&q=80";
+      }
+      if (lower.includes("tuition") || lower.includes("coaching") || lower.includes("education")) {
+        return "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=600&auto=format&fit=crop&q=80";
+      }
+      return "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=600&auto=format&fit=crop&q=80";
     };
 
+    setIsSubmitting(true);
+
     try {
-      const servDocId = editingService ? editingService.id : doc(collection(db, "users", user.uid, "services")).id;
-      await setDoc(doc(db, "users", user.uid, "services", servDocId), serviceDoc, { merge: true });
+      let downloadUrl = imagePreview;
 
-      setServices((prev) => {
-        const updated = { id: servDocId, ...serviceDoc };
-        if (editingService) {
-          return prev.map((s) => (s.id === servDocId ? updated : s));
-        }
-        return [updated, ...prev];
-      });
+      if (imageFile) {
+        const storageRef = ref(storage, `services/${user.uid}_${Date.now()}`);
+        const uploadTask = uploadBytesResumable(storageRef, imageFile);
+        await new Promise((resolve, reject) => {
+          uploadTask.on(
+            "state_changed",
+            null,
+            (err) => reject(err),
+            async () => {
+              downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve();
+            }
+          );
+        });
+      }
 
+      const serviceDoc = {
+        id: editingService?.id,
+        title: title.trim(),
+        name: title.trim(),
+        priceType,
+        price: parseFloat(price || "0"),
+        approxPrice: priceType === "variable" ? approxPrice.trim() : null,
+        duration: parseInt(duration || "30", 10),
+        durationMinutes: parseInt(duration || "30", 10),
+        category,
+        description: description.trim(),
+        imageUrl: downloadUrl.trim() || getCategoryFallbackImage(category, title),
+        weeklySchedule,
+        isAvailable: editingService ? editingService.isAvailable ?? true : true,
+      };
+
+      await saveServiceItem(user.uid, serviceDoc);
       setBookModalOpen(false);
       toast.success(editingService ? "Service updated!" : "Service added!");
     } catch (err) {
@@ -219,10 +230,7 @@ export default function ProfileServicesPage() {
 
   const handleToggleAvailability = async (serviceId, currentStatus) => {
     try {
-      await updateDoc(doc(db, "users", user.uid, "services", serviceId), { isAvailable: !currentStatus });
-      setServices((prev) =>
-        prev.map((s) => (s.id === serviceId ? { ...s, isAvailable: !currentStatus } : s))
-      );
+      await saveServiceItem(user.uid, { id: serviceId, isAvailable: !currentStatus });
       toast.success(!currentStatus ? "Service activated" : "Service paused");
     } catch (err) {
       console.error("Error toggling status:", err);
@@ -233,8 +241,7 @@ export default function ProfileServicesPage() {
   const handleDeleteService = async (serviceId, serviceTitle) => {
     if (confirm(`Are you sure you want to delete service "${serviceTitle}"?`)) {
       try {
-        await deleteDoc(doc(db, "users", user.uid, "services", serviceId));
-        setServices((prev) => prev.filter((s) => s.id !== serviceId));
+        await deleteServiceItem(user.uid, serviceId);
         toast.success("Service deleted.");
       } catch (err) {
         console.error("Error deleting service:", err);
@@ -266,8 +273,32 @@ export default function ProfileServicesPage() {
     }
   };
 
+  const getDaysInMonthGrid = (dateObj) => {
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const grid = [];
+    for (let i = 0; i < firstDay; i++) {
+      grid.push(null);
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      grid.push(new Date(year, month, d));
+    }
+    return grid;
+  };
+
+  const formatISOYYYYMMDD = (d) => {
+    if (!d) return "";
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const filteredServices = services.filter((s) =>
-    (s.title || "").toLowerCase().includes(searchQuery.toLowerCase())
+    (s.title || s.name || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -345,7 +376,7 @@ export default function ProfileServicesPage() {
 
           {loading ? (
             <div className="p-12 text-center text-xs text-gray-400 animate-pulse">
-              Loading service catalog...
+              Streaming real-time service catalog...
             </div>
           ) : filteredServices.length === 0 ? (
             <div className="p-12 text-center bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 space-y-3">
@@ -459,10 +490,42 @@ export default function ProfileServicesPage() {
 
       {/* TAB 2: Appointments Manager */}
       {activeTab === "appointments" && (
-        <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 p-6 shadow-sm space-y-4">
-          <h2 className="text-base font-black text-[#1A1A1A] dark:text-white">
-            Incoming Client Appointments
-          </h2>
+        <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 p-6 shadow-sm space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-white/10">
+            <div>
+              <h2 className="text-base font-black text-[#1A1A1A] dark:text-white">
+                Incoming Client Appointments
+              </h2>
+              <p className="text-xs text-gray-500">Track and manage time slots booked by clients.</p>
+            </div>
+
+            {/* View Mode Switcher */}
+            <div className="flex items-center gap-1.5 bg-[#F7F6F3] dark:bg-[#262626] p-1 rounded-2xl border border-[#E5E0D8] dark:border-white/10 self-start sm:self-auto">
+              <button
+                onClick={() => setAppointmentViewMode("calendar")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  appointmentViewMode === "calendar"
+                    ? "bg-white dark:bg-[#1A1A1A] text-[#1A1A1A] dark:text-white shadow-xs"
+                    : "text-gray-500 hover:text-[#1A1A1A] dark:hover:text-white"
+                }`}
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>Calendar View</span>
+              </button>
+
+              <button
+                onClick={() => setAppointmentViewMode("table")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  appointmentViewMode === "table"
+                    ? "bg-white dark:bg-[#1A1A1A] text-[#1A1A1A] dark:text-white shadow-xs"
+                    : "text-gray-500 hover:text-[#1A1A1A] dark:hover:text-white"
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Table View</span>
+              </button>
+            </div>
+          </div>
 
           {appointments.length === 0 ? (
             <div className="p-10 text-center text-xs text-gray-400 space-y-2">
@@ -470,7 +533,120 @@ export default function ProfileServicesPage() {
               <p className="font-bold text-[#1A1A1A] dark:text-white">No Appointment Bookings Yet</p>
               <p>Appointments booked by clients from your public storefront will appear here.</p>
             </div>
+          ) : appointmentViewMode === "calendar" ? (
+            /* Interactive Monthly Calendar View */
+            <div className="space-y-4">
+              {/* Calendar Month Header */}
+              <div className="flex items-center justify-between px-2">
+                <span className="text-sm font-black text-[#1A1A1A] dark:text-white">
+                  {currentMonthDate.toLocaleString("en-US", { month: "long", year: "numeric" })}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() =>
+                      setCurrentMonthDate(
+                        new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth() - 1, 1)
+                      )
+                    }
+                    className="p-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentMonthDate(new Date())}
+                    className="px-2.5 py-1 rounded-xl bg-[#F7F6F3] dark:bg-[#262626] text-[11px] font-bold text-[#1A1A1A] dark:text-white"
+                  >
+                    Today
+                  </button>
+                  <button
+                    onClick={() =>
+                      setCurrentMonthDate(
+                        new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth() + 1, 1)
+                      )
+                    }
+                    className="p-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Day Headers */}
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-extrabold uppercase text-gray-400">
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                  <div key={day} className="py-1">
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* Grid Cells */}
+              <div className="grid grid-cols-7 gap-1.5">
+                {getDaysInMonthGrid(currentMonthDate).map((cellDate, idx) => {
+                  if (!cellDate) {
+                    return <div key={`empty_${idx}`} className="h-28 rounded-2xl bg-gray-50/50 dark:bg-white/2" />;
+                  }
+
+                  const dateStr = formatISOYYYYMMDD(cellDate);
+                  const isToday = formatISOYYYYMMDD(new Date()) === dateStr;
+
+                  // Find appointments on this day
+                  const dayApps = appointments.filter((a) => {
+                    const bookingDateStr = (a.bookingDate || "").trim();
+                    return bookingDateStr === dateStr || (a.createdAt?.seconds && formatISOYYYYMMDD(new Date(a.createdAt.seconds * 1000)) === dateStr);
+                  });
+
+                  return (
+                    <div
+                      key={dateStr}
+                      className={`h-28 rounded-2xl p-2 border flex flex-col justify-between overflow-y-auto ${
+                        isToday
+                          ? "border-[#1A1A1A] dark:border-white bg-[#F7F6F3] dark:bg-[#222]"
+                          : "border-gray-100 dark:border-white/5 bg-white dark:bg-[#1A1A1A]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`text-xs font-black ${
+                            isToday
+                              ? "w-5 h-5 rounded-full bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] flex items-center justify-center text-[10px]"
+                              : "text-gray-700 dark:text-gray-300"
+                          }`}
+                        >
+                          {cellDate.getDate()}
+                        </span>
+                        {dayApps.length > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-extrabold text-[9px]">
+                            {dayApps.length}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Time Block Cards */}
+                      <div className="space-y-1 my-1">
+                        {dayApps.map((a) => (
+                          <div
+                            key={a.id}
+                            className={`p-1.5 rounded-xl text-[10px] font-bold border leading-tight ${
+                              (a.status || "").toLowerCase() === "confirmed"
+                                ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20"
+                                : (a.status || "").toLowerCase() === "completed"
+                                ? "bg-blue-500/10 text-blue-700 border-blue-500/20"
+                                : "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                            }`}
+                          >
+                            <p className="truncate">{a.clientName}</p>
+                            <p className="text-[9px] opacity-80">{a.bookingTime}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           ) : (
+            /* Table View */
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
@@ -535,41 +711,82 @@ export default function ProfileServicesPage() {
         </div>
       )}
 
-      {/* Add / Edit Service Modal with Weekly Day & Time Slot Schedule */}
+      {/* Add / Edit Service Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl p-6 max-w-lg w-full border border-[#E5E0D8] dark:border-white/10 space-y-4 relative my-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl p-6 sm:p-8 max-w-xl w-full border border-[#E5E0D8] dark:border-white/10 space-y-5 relative my-8 shadow-2xl">
             <button
               onClick={() => setBookModalOpen(false)}
-              className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-700"
+              className="absolute top-5 right-5 p-2 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
 
-            <h3 className="font-black text-base text-[#1A1A1A] dark:text-white">
+            <h3 className="font-black text-xl text-[#1A1A1A] dark:text-white pb-2 border-b border-gray-100 dark:border-white/10">
               {editingService ? "Edit Service & Weekly Schedule" : "Add Service & Weekly Schedule"}
             </h3>
 
             <form onSubmit={handleSaveService} className="space-y-4 text-xs">
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Service Title</label>
+                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">
+                  Service Cover Photo
+                </label>
+                {imagePreview ? (
+                  <div className="relative w-full h-36 rounded-2xl overflow-hidden border border-gray-200 dark:border-white/10">
+                    <Image src={imagePreview} alt="Preview" fill className="object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageFile(null);
+                        setImagePreview("");
+                      }}
+                      className="absolute top-3 right-3 p-1.5 bg-black/60 text-white rounded-full hover:bg-black transition"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full h-28 rounded-2xl border-2 border-dashed border-[#DDD8CF] dark:border-white/20 flex flex-col items-center justify-center text-gray-500 bg-[#F7F6F3] dark:bg-[#222222] hover:border-[#1A1A1A] transition"
+                  >
+                    <ImagePlus className="w-6 h-6 mb-1" />
+                    <span className="text-xs font-bold">Upload Custom Cover Photo</span>
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">
+                  Service Title
+                </label>
                 <input
                   type="text"
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g. Haircut & Grooming"
-                  className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2.5 outline-none text-[#1A1A1A] dark:text-white"
+                  className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-2xl px-3.5 py-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none focus:border-[#1A1A1A] transition"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Pricing Model</label>
+                  <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">
+                    Pricing Model
+                  </label>
                   <select
                     value={priceType}
                     onChange={(e) => setPriceType(e.target.value)}
-                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2.5 outline-none text-[#1A1A1A] dark:text-white"
+                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-2xl px-3.5 py-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none font-bold"
                   >
                     <option value="fixed">Fixed Price</option>
                     <option value="variable">Variable / Approx</option>
@@ -577,7 +794,7 @@ export default function ProfileServicesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                  <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">
                     {priceType === "fixed" ? "Price (₹)" : "Approx Price Range"}
                   </label>
                   <input
@@ -585,8 +802,8 @@ export default function ProfileServicesPage() {
                     required
                     value={priceType === "fixed" ? price : approxPrice}
                     onChange={(e) => (priceType === "fixed" ? setPrice(e.target.value) : setApproxPrice(e.target.value))}
-                    placeholder={priceType === "fixed" ? "499" : "₹300 - ₹800"}
-                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2.5 outline-none text-[#1A1A1A] dark:text-white"
+                    placeholder={priceType === "fixed" ? "499" : "300 - 800"}
+                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-2xl px-3.5 py-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none focus:border-[#1A1A1A] transition"
                   />
                 </div>
               </div>
@@ -621,7 +838,7 @@ export default function ProfileServicesPage() {
                 </div>
               </div>
 
-              {/* Weekly Available Days & Hours Slot Configuration */}
+              {/* Weekly Days Schedule */}
               <div className="space-y-2 p-3.5 rounded-2xl bg-[#F7F6F3] dark:bg-[#222222] border border-[#E5E0D8] dark:border-white/10">
                 <p className="text-[10px] font-bold uppercase text-gray-500">Weekly Availability & Time Slots</p>
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">

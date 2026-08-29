@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs } from "firebase/firestore";
 import {
   ArrowLeft,
   BarChart2,
@@ -39,20 +39,20 @@ export default function ProductAnalyticsPage({ params }) {
       try {
         let pData = null;
 
-        // Try top-level products collection first
-        const topSnap = await getDoc(doc(db, "products", productId));
-        if (topSnap.exists()) {
-          pData = { id: topSnap.id, ...topSnap.data() };
+        // CANONICAL PATH FIRST: users/{userId}/products/{productId}
+        const subSnap = await getDoc(doc(db, "users", user.uid, "products", productId));
+        if (subSnap.exists()) {
+          pData = { id: subSnap.id, ...subSnap.data() };
         } else {
-          // Try user-scoped subcollection
-          const subSnap = await getDoc(doc(db, "users", user.uid, "products", productId));
-          if (subSnap.exists()) {
-            pData = { id: subSnap.id, ...subSnap.data() };
+          // Fallback to top-level collection
+          const topSnap = await getDoc(doc(db, "products", productId));
+          if (topSnap.exists()) {
+            pData = { id: topSnap.id, ...topSnap.data() };
           }
         }
 
         if (!pData) {
-          setError("Product record not found.");
+          setError("Product record not found in inventory.");
         } else {
           setProduct(pData);
         }
@@ -70,7 +70,7 @@ export default function ProductAnalyticsPage({ params }) {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto p-12 text-center text-xs text-gray-400 animate-pulse">
-        Loading product analytics...
+        Loading product performance analytics...
       </div>
     );
   }

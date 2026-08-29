@@ -278,6 +278,31 @@ export default function StoreLocationPicker() {
         { merge: true }
       );
 
+      // Also update user document
+      try {
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            _geoloc: geoData,
+            location: { lat: coordinates.lat, lng: coordinates.lng },
+            coordinates: { lat: coordinates.lat, lng: coordinates.lng },
+            locationAddress: formattedAddress,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch {
+        // Ignore
+      }
+
+      // Save to localStorage
+      if (typeof window !== "undefined") {
+        localStorage.setItem(
+          "thikana_user_coords",
+          JSON.stringify({ lat: coordinates.lat, lng: coordinates.lng })
+        );
+      }
+
       // Update location_index collection with 5-char geohash cell
       const locationIndexRef = doc(db, "location_index", `${gHash5}_${user.uid}`);
       await setDoc(

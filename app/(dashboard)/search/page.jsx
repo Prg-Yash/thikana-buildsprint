@@ -125,32 +125,61 @@ function SearchPageContent() {
 
   // Filter businesses based on search text, category, and radius
   const filteredBusinesses = businesses.filter((item) => {
-    // 1. Full-text search match
-    const businessNameStr = typeof item.businessName === "string" ? item.businessName : "";
-    const categoryStr = typeof item.category === "string" ? item.category : "";
-    const locationStr = typeof item.location === "string" ? item.location : "";
-    const addressFormattedStr = typeof item.address?.formatted === "string" ? item.address.formatted : "";
+    // 1. Extract string parameters safely across schema variations
+    const businessNameStr =
+      typeof item.businessName === "string"
+        ? item.businessName
+        : typeof item.name === "string"
+        ? item.name
+        : "";
+
+    const categoryStr =
+      typeof item.category === "string"
+        ? item.category
+        : typeof item.business_type === "string"
+        ? item.business_type
+        : Array.isArray(item.business_categories)
+        ? item.business_categories.join(" ")
+        : "";
+
+    const locationStr =
+      typeof item.locationAddress === "string"
+        ? item.locationAddress
+        : typeof item.address?.formatted === "string"
+        ? item.address.formatted
+        : "";
+
+    const tagsStr = Array.isArray(item.businessTags) ? item.businessTags.join(" ") : "";
 
     const matchesSearch =
       !searchQuery.trim() ||
       businessNameStr.toLowerCase().includes(searchQuery.toLowerCase()) ||
       categoryStr.toLowerCase().includes(searchQuery.toLowerCase()) ||
       locationStr.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      addressFormattedStr.toLowerCase().includes(searchQuery.toLowerCase());
+      tagsStr.toLowerCase().includes(searchQuery.toLowerCase());
 
-    // 2. Category filter
+    // 2. Category filter matching
+    const sCat = selectedCategory.toLowerCase();
+    const pCat = categoryStr.toLowerCase();
     const matchesCategory =
       selectedCategory === "All" ||
-      categoryStr.toLowerCase() === selectedCategory.toLowerCase();
+      pCat === sCat ||
+      pCat.includes(sCat) ||
+      sCat.includes(pCat);
 
-    // 3. Distance Radius filter
+    // 3. Distance Radius filter using safely extracted coordinates
     let matchesRadius = true;
-    if (selectedRadius && item._geoloc?.lat && item._geoloc?.lng) {
+    const lat =
+      item._geoloc?.lat ?? item.coordinates?.lat ?? item.location?.latitude ?? item.location?.lat;
+    const lng =
+      item._geoloc?.lng ?? item.coordinates?.lng ?? item.location?.longitude ?? item.location?.lng;
+
+    if (selectedRadius && lat !== undefined && lng !== undefined) {
       const dist = getHaversineDistanceKm(
         userLocation.lat,
         userLocation.lng,
-        item._geoloc.lat,
-        item._geoloc.lng
+        parseFloat(lat),
+        parseFloat(lng)
       );
       matchesRadius = dist !== null && dist <= selectedRadius;
     }

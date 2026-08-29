@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Inbox,
   Navigation,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -39,6 +40,7 @@ export default function FeedPage() {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [resendingEmail, setResendingEmail] = useState(false);
+  const [dismissEmailBanner, setDismissEmailBanner] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -76,7 +78,7 @@ export default function FeedPage() {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Email Verification Banner */}
-      {user && !user.emailVerified && (
+      {user && !user.emailVerified && !dismissEmailBanner && !user.providerData?.some((p) => p.providerId === "google.com") && (
         <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3 text-xs sm:text-sm">
           <div className="flex items-center gap-2.5">
             <MailWarning className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -84,13 +86,22 @@ export default function FeedPage() {
               <strong>Verify your email address</strong> to enable post creation and merchant notifications.
             </span>
           </div>
-          <button
-            onClick={handleResendEmail}
-            disabled={resendingEmail}
-            className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition"
-          >
-            {resendingEmail ? "Sending..." : "Resend Link"}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleResendEmail}
+              disabled={resendingEmail}
+              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition"
+            >
+              {resendingEmail ? "Sending..." : "Resend Link"}
+            </button>
+            <button
+              onClick={() => setDismissEmailBanner(true)}
+              className="p-1 text-amber-700 hover:text-amber-950 dark:hover:text-white transition"
+              aria-label="Dismiss banner"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 

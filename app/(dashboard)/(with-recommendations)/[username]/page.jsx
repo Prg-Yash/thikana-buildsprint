@@ -276,6 +276,38 @@ export default function StorefrontPage({ params }) {
     }
   };
 
+  const [existingBookedSlots, setExistingBookedSlots] = useState([]);
+
+  // Fetch already booked slots when date changes
+  useEffect(() => {
+    async function fetchBookedSlots() {
+      if (!storeData?.id || !bookingDate) {
+        setExistingBookedSlots([]);
+        return;
+      }
+      try {
+        const qApp = query(
+          collection(db, "appointments"),
+          where("merchantId", "==", storeData.id),
+          where("bookingDate", "==", bookingDate)
+        );
+        const appSnap = await getDocs(qApp);
+        const bookedTimeSlots = [];
+        appSnap.docs.forEach((d) => {
+          const data = d.data();
+          if (data.status !== "Cancelled" && data.bookingTime) {
+            bookedTimeSlots.push(data.bookingTime);
+          }
+        });
+        setExistingBookedSlots(bookedTimeSlots);
+      } catch {
+        // Ignore
+      }
+    }
+
+    fetchBookedSlots();
+  }, [storeData?.id, bookingDate]);
+
   const getAvailableSlotsForDate = (dateStr) => {
     if (!dateStr || !selectedService?.weeklySchedule) return [];
 
@@ -303,13 +335,20 @@ export default function StorefrontPage({ params }) {
     const durationMins = selectedService.durationMinutes || selectedService.duration || 30;
 
     const slots = [];
+    const bookedSet = new Set(existingBookedSlots);
+
     for (let m = startMinutes; m + durationMins <= endMinutes; m += durationMins) {
       const h = Math.floor(m / 60);
       const mins = m % 60;
       const ampm = h >= 12 ? "PM" : "AM";
       const displayH = h % 12 === 0 ? 12 : h % 12;
       const displayM = mins < 10 ? `0${mins}` : mins;
-      slots.push(`${displayH}:${displayM} ${ampm}`);
+      const slotStr = `${displayH}:${displayM} ${ampm}`;
+
+      // Filter out already booked slots!
+      if (!bookedSet.has(slotStr)) {
+        slots.push(slotStr);
+      }
     }
 
     return slots;
@@ -631,21 +670,48 @@ export default function StorefrontPage({ params }) {
                   </div>
 
                   <div className="pt-2 border-t border-gray-100 dark:border-white/5 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-black text-sm text-[#1A1A1A] dark:text-white">₹{serv.price || 0}</span>
-                      <span className="text-gray-400 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> {serv.durationMinutes || 30} Mins
+                    {/* Weekly Days Schedule Badges */}
+                    {Array.isArray(serv.weeklySchedule) && (
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-bold text-gray-400 uppercase">Available Days</p>
+                        <div className="flex flex-wrap gap-1">
+                          {serv.weeklySchedule.map((s) => (
+                            <span
+                              key={s.day}
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                s.enabled
+                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                  : "bg-gray-100 dark:bg-white/5 text-gray-400 line-through"
+                              }`}
+                            >
+                              {s.day}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <span className="font-black text-sm text-[#1A1A1A] dark:text-white">
+                        {serv.priceType === "variable" ? `Approx. ₹${serv.approxPrice || serv.price}` : `₹${serv.price || 0}`}
+                      </span>
+                      <span className="text-gray-400 flex items-center gap-1 font-bold">
+                        <Clock className="w-3.5 h-3.5" /> {serv.durationMinutes || serv.duration || 30} Mins
                       </span>
                     </div>
-                    <button
-                      onClick={() => {
-                        setSelectedService(serv);
-                        setBookModalOpen(true);
-                      }}
-                      className="w-full py-2 bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] rounded-xl text-xs font-bold transition hover:opacity-90 flex items-center justify-center gap-1.5"
-                    >
-                      <Calendar className="w-3.5 h-3.5" /> Book Slot
-                    </button>
+                    {storeData?.acceptAppointments !== false ? (
+                      <button
+                        onClick={() => {
+                          setSelectedService(serv);
+                          setBookModalOpen(true);
+                        }}
+                        className="w-full py-2 bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] rounded-xl text-xs font-bold transition hover:opacity-90 flex items-center justify-center gap-1.5"
+                      >
+                        <Calendar className="w-3.5 h-3.5" /> Book Slot
+                      </button>
+                    ) : (
+                      <p className="text-[11px] text-gray-400 italic text-center py-1">Store not accepting appointments currently</p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -679,29 +745,48 @@ export default function StorefrontPage({ params }) {
 
       {/* Call Modal */}
       {callModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl p-6 max-w-sm w-full border border-[#E5E0D8] dark:border-white/10 space-y-4 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl p-6 sm:p-8 max-w-md w-full border border-[#E5E0D8] dark:border-white/10 space-y-5 relative shadow-2xl my-8">
             <button
               onClick={() => setCallModalOpen(false)}
-              className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-700"
+              className="absolute top-5 right-5 p-2 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
-            <h3 className="font-black text-base">Request Callback</h3>
-            <form onSubmit={handleRequestCall} className="space-y-3">
-              <input
-                type="tel"
-                required
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="Enter your phone number"
-                className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] rounded-xl p-3 text-xs outline-none"
-              />
+
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                <PhoneCall className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Callback Inquiry</span>
+                <h3 className="font-black text-lg text-[#1A1A1A] dark:text-white">
+                  Contact {storeData?.name || "Merchant"}
+                </h3>
+              </div>
+            </div>
+
+            <form onSubmit={handleRequestCall} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">
+                  Your Phone Number
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-2xl px-4 py-3 text-sm text-[#1A1A1A] dark:text-white outline-none focus:border-[#1A1A1A] transition"
+                />
+              </div>
+
               <button
                 type="submit"
-                className="w-full py-3 bg-[#1A1A1A] text-white rounded-xl text-xs font-bold"
+                className="w-full py-3.5 bg-[#1A1A1A] hover:bg-black dark:bg-white dark:hover:bg-gray-100 text-white dark:text-[#1A1A1A] rounded-2xl text-xs font-extrabold transition shadow-md flex items-center justify-center gap-2"
               >
-                Submit
+                <PhoneCall className="w-4 h-4" />
+                <span>Submit Phone Inquiry</span>
               </button>
             </form>
           </div>
@@ -710,89 +795,113 @@ export default function StorefrontPage({ params }) {
 
       {/* Book Appointment Modal */}
       {bookModalOpen && selectedService && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl p-6 max-w-sm w-full border border-[#E5E0D8] dark:border-white/10 space-y-4 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl p-6 sm:p-8 max-w-lg w-full border border-[#E5E0D8] dark:border-white/10 space-y-5 relative shadow-2xl my-8">
             <button
               onClick={() => setBookModalOpen(false)}
-              className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-700"
+              className="absolute top-5 right-5 p-2 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
 
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase">Book Appointment</span>
-              <h3 className="font-black text-base text-[#1A1A1A] dark:text-white">
-                {selectedService.title || selectedService.name}
-              </h3>
-              <p className="text-xs font-bold text-emerald-600">
-                {selectedService.priceType === "variable" ? `Approx. ₹${selectedService.approxPrice || selectedService.price}` : `₹${selectedService.price || 0}`} • {selectedService.durationMinutes || selectedService.duration || 30} Mins
-              </p>
+            <div className="flex items-start justify-between gap-4 pb-3 border-b border-gray-100 dark:border-white/10">
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Book Appointment Slot</span>
+                <h3 className="font-black text-xl text-[#1A1A1A] dark:text-white">
+                  {selectedService.title || selectedService.name}
+                </h3>
+                <p className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                  <span>
+                    {selectedService.priceType === "variable"
+                      ? `Approx. ₹${selectedService.approxPrice || selectedService.price}`
+                      : `₹${selectedService.price || 0}`}
+                  </span>
+                  <span>•</span>
+                  <span className="text-gray-500 font-bold flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    {selectedService.durationMinutes || selectedService.duration || 30} Mins
+                  </span>
+                </p>
+              </div>
             </div>
 
             {/* Weekly Days Schedule Overview */}
             {Array.isArray(selectedService.weeklySchedule) && (
-              <div className="p-3 rounded-2xl bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 space-y-1">
-                <p className="text-[10px] font-bold uppercase text-gray-500">Service Hours & Available Days</p>
-                <div className="flex flex-wrap gap-1">
+              <div className="p-4 rounded-2xl bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 space-y-2">
+                <p className="text-[10px] font-bold uppercase text-gray-500">Service Working Hours & Days</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                   {selectedService.weeklySchedule.map((s) => (
-                    <span
+                    <div
                       key={s.day}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                        s.enabled ? "bg-emerald-500/10 text-emerald-600" : "bg-gray-100 text-gray-400 line-through"
+                      className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center justify-between ${
+                        s.enabled
+                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
+                          : "bg-gray-100 dark:bg-white/5 text-gray-400 line-through"
                       }`}
                     >
-                      {s.day} {s.enabled ? `(${s.startTime}-${s.endTime})` : ""}
-                    </span>
+                      <span>{s.day}</span>
+                      {s.enabled && <span className="text-[9px] font-semibold">{s.startTime}-{s.endTime}</span>}
+                    </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <form onSubmit={handleBookAppointment} className="space-y-3">
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Your Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  placeholder="e.g. John Doe"
-                  className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Your Phone Number</label>
-                <input
-                  type="tel"
-                  required
-                  value={clientPhone}
-                  onChange={(e) => setClientPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
+            <form onSubmit={handleBookAppointment} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Date</label>
+                  <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">
+                    Your Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    placeholder="e.g. John Doe"
+                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-2xl px-3.5 py-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none focus:border-[#1A1A1A] transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">
+                    Your Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={clientPhone}
+                    onChange={(e) => setClientPhone(e.target.value)}
+                    placeholder="+91 98765 43210"
+                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-2xl px-3.5 py-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none focus:border-[#1A1A1A] transition"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">
+                    Select Date
+                  </label>
                   <input
                     type="date"
                     required
                     value={bookingDate}
                     onChange={handleDateChange}
-                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2 text-xs text-[#1A1A1A] dark:text-white outline-none"
+                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-2xl px-3.5 py-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none focus:border-[#1A1A1A] transition"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Time Slot</label>
+                  <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">
+                    Select Available Time Slot
+                  </label>
                   <select
                     required
                     disabled={!bookingDate || availableSlots.length === 0}
                     value={bookingTime}
                     onChange={(e) => setBookingTime(e.target.value)}
-                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-xl p-2 text-xs text-[#1A1A1A] dark:text-white outline-none disabled:opacity-50"
+                    className="w-full bg-[#F7F6F3] dark:bg-[#262626] border border-[#DDD8CF] dark:border-white/10 rounded-2xl px-3.5 py-2.5 text-xs text-[#1A1A1A] dark:text-white outline-none disabled:opacity-50 focus:border-[#1A1A1A] transition font-bold"
                   >
                     {!bookingDate ? (
                       <option value="">Pick Date First</option>
@@ -800,7 +909,7 @@ export default function StorefrontPage({ params }) {
                       <option value="">No Slots on Selected Day</option>
                     ) : (
                       <>
-                        <option value="">Select Slot</option>
+                        <option value="">Select Time Slot</option>
                         {availableSlots.map((slot) => (
                           <option key={slot} value={slot}>
                             {slot}
@@ -814,10 +923,11 @@ export default function StorefrontPage({ params }) {
 
               <button
                 type="submit"
-                disabled={submittingBooking}
-                className="w-full py-3 mt-2 bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] rounded-xl text-xs font-bold transition hover:opacity-90"
+                disabled={submittingBooking || availableSlots.length === 0}
+                className="w-full py-3.5 bg-[#1A1A1A] hover:bg-black dark:bg-white dark:hover:bg-gray-100 text-white dark:text-[#1A1A1A] rounded-2xl text-xs font-extrabold transition shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {submittingBooking ? "Confirming..." : "Confirm Appointment"}
+                <Calendar className="w-4 h-4" />
+                <span>{submittingBooking ? "Confirming Booking..." : "Confirm Appointment"}</span>
               </button>
             </form>
           </div>

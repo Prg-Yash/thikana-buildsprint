@@ -4,20 +4,13 @@ import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
-import { db, storage } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { saveProductItem } from "@/lib/inventory-operations";
 import {
   Package,
   Upload,
   X,
   ImagePlus,
   ArrowLeft,
-  Sparkles,
-  Tag,
-  IndianRupee,
-  Layers,
-  FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -77,59 +70,32 @@ export default function AddProductPage() {
       return;
     }
 
+    if (!user?.uid) {
+      toast.error("Please sign in to add products");
+      return;
+    }
+
     setIsSubmitting(true);
-    setUploadProgress(10);
+    setUploadProgress(30);
 
     try {
-      let downloadUrl = "";
-
-      // 1. Upload Product Image to Firebase Storage if selected
-      if (imageFile) {
-        const fileRef = ref(storage, `products/${user?.uid || "anon"}_${Date.now()}`);
-        const uploadTask = uploadBytesResumable(fileRef, imageFile);
-
-        await new Promise((resolve, reject) => {
-          uploadTask.on(
-            "state_changed",
-            (snapshot) => {
-              const progress = Math.round(
-                (snapshot.bytesTransferred / snapshot.totalBytes) * 80
-              );
-              setUploadProgress(10 + progress);
-            },
-            (error) => reject(error),
-            async () => {
-              downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              resolve();
-            }
-          );
-        });
-      }
-
-      setUploadProgress(90);
-
-      // 2. Save Product to Firestore `products` collection
       const productData = {
-        userId: user?.uid || null,
-        merchantId: user?.uid || null,
         name: name.trim(),
         description: description.trim(),
         category,
-        price: parseFloat(price),
-        salePrice: salePrice ? parseFloat(salePrice) : null,
-        quantity: parseInt(quantity || "0", 10),
-        hsn: hsn.trim(),
-        gst: parseInt(gst || "0", 10),
-        imageUrl: downloadUrl || "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=600&auto=format&fit=crop&q=80",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        price,
+        salePrice,
+        quantity,
+        hsn,
+        gst,
       };
 
-      await addDoc(collection(db, "products"), productData);
+      setUploadProgress(60);
+      await saveProductItem(user.uid, productData, imageFile);
 
       setUploadProgress(100);
       toast.success("Product added to inventory catalog!");
-      router.push("/products");
+      router.push("/profile/inventory");
     } catch (err) {
       console.error("Error adding product:", err);
       toast.error(err.message || "Failed to add product");

@@ -63,8 +63,46 @@ export function useFeed(userId, initialLimit = 10) {
 
       let currentCoords = coords;
 
+      // 1. Try browser geolocation if not set yet and not explicitly denied
       if (!currentCoords && !locationDenied) {
         currentCoords = await requestLocation();
+      }
+
+      // 2. Fallback to saved user/merchant coordinates from Firestore or localStorage if browser GPS unavailable
+      if (!currentCoords && typeof window !== "undefined") {
+        try {
+          const storedLoc = localStorage.getItem("thikana_user_coords");
+          if (storedLoc) {
+            const parsed = JSON.parse(storedLoc);
+            if (parsed?.lat && parsed?.lng) {
+              currentCoords = parsed;
+              setCoords(parsed);
+              setLocationDenied(false);
+            }
+          }
+        } catch {
+          // Ignore
+        }
+      }
+
+      // 3. Fallback to user object coordinates from Auth / Firestore
+      if (!currentCoords && userId && userId !== "guest") {
+        try {
+          const { doc, getDoc } = await import("firebase/firestore");
+          const { db } = await import("@/lib/firebase");
+          const userSnap = await getDoc(doc(db, "users", userId));
+          if (userSnap.exists()) {
+            const uData = userSnap.data();
+            const loc = uData._geoloc || uData.location || uData.coordinates;
+            if (loc?.lat && loc?.lng) {
+              currentCoords = { lat: loc.lat, lng: loc.lng };
+              setCoords(currentCoords);
+              setLocationDenied(false);
+            }
+          }
+        } catch {
+          // Ignore
+        }
       }
 
       if (!currentCoords) {
@@ -161,10 +199,18 @@ export function useFeed(userId, initialLimit = 10) {
 
   const retryLocation = useCallback(async () => {
     setLocationDenied(false);
-    const newCoords = await requestLocation();
-    if (newCoords) {
-      fetchFeed(true, 1);
+    let newCoords = await requestLocation();
+
+    if (!newCoords) {
+      // Fallback to default test location (18.9936, 72.8452)
+      newCoords = { lat: 18.9936, lng: 72.8452 };
+      setCoords(newCoords);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("thikana_user_coords", JSON.stringify(newCoords));
+      }
     }
+
+    fetchFeed(true, 1);
   }, [requestLocation, fetchFeed]);
 
   return {
