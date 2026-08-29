@@ -44,7 +44,7 @@ import {
   ShieldCheck,
   Clock,
   Trash2,
-  Wrench,
+  Bot,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -427,6 +427,14 @@ export default function ProfilePage() {
 
             {/* Header Action Buttons */}
             <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/profile/ai-advisor"
+                className="px-3.5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+              >
+                <Bot className="w-4 h-4" />
+                <span>AI Co-Pilot</span>
+              </Link>
+
               <button
                 onClick={() => setEditProfileModalOpen(true)}
                 className="px-3.5 py-2.5 rounded-2xl border border-[#E5E0D8] dark:border-white/10 hover:bg-[#F4F1EA] dark:hover:bg-white/5 text-xs font-bold text-[#1A1A1A] dark:text-white transition flex items-center gap-1.5"

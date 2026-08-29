@@ -30,11 +30,14 @@ import {
   Menu,
   Globe,
   Store,
+  Bot,
+  Sparkles,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { name: "Home Feed", href: "/feed", icon: Home },
   { name: "Discover / Map", href: "/map", icon: Compass },
+  { name: "AI Business Advisor", href: "/profile/ai-advisor", icon: Bot },
   { name: "Analytics Dashboard", href: "/profile/analytics", icon: BarChart3 },
   { name: "Inventory Management", href: "/profile/inventory", icon: Package },
   { name: "Store Services", href: "/profile/services", icon: Wrench },
