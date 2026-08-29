@@ -30,9 +30,8 @@ import {
 const NAV_ITEMS = [
   { name: "Home Feed", href: "/feed", icon: Home },
   { name: "Discover / Map", href: "/map", icon: Compass },
+  { name: "Business Dashboard", href: "/business-dashboard", icon: BarChart3 },
   { name: "Website Builder", href: "/websites", icon: PlusSquare },
-  { name: "Analytics Dashboard", href: "/analytics", icon: BarChart3 },
-  { name: "Store Products", href: "/products", icon: ShoppingBag },
   { name: "Settings", href: "/profile/settings", icon: Settings },
 ];
 
