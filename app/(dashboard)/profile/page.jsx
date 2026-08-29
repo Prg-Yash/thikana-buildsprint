@@ -638,7 +638,7 @@ export default function ProfilePage() {
             <div className="p-12 text-center bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 space-y-3">
               <PlusSquare className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto" />
               <h3 className="font-bold text-sm text-[#1A1A1A] dark:text-white">No Published Posts</h3>
-              <p className="text-xs text-gray-500">You haven't published any store updates or offers yet.</p>
+              <p className="text-xs text-gray-500">You haven&apos;t published any store updates or offers yet.</p>
               <Link
                 href="/posts/create"
                 className="inline-block px-4 py-2 bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] rounded-xl text-xs font-bold"
