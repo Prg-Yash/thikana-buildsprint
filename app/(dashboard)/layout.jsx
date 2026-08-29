@@ -40,6 +40,7 @@ const NAV_ITEMS = [
   { name: "Store Services", href: "/profile/services", icon: Wrench },
   { name: "Create Post", href: "/posts/create", icon: PlusSquare },
   { name: "Website Builder", href: "/websites", icon: Globe },
+  { name: "Business Dashboard", href: "/business-dashboard", icon: BarChart3 },
   { name: "Settings", href: "/profile/settings", icon: Settings },
 ];
 
@@ -140,11 +141,10 @@ function DashboardContent({ children }) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3.5 px-3 py-3 rounded-2xl text-sm font-semibold transition-colors ${
-                    isActive
+                  className={`flex items-center gap-3.5 px-3 py-3 rounded-2xl text-sm font-semibold transition-colors ${isActive
                       ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] shadow-sm"
                       : "text-gray-600 dark:text-gray-400 hover:bg-[#EEEAE4] dark:hover:bg-white/5 hover:text-[#1A1A1A] dark:hover:text-white"
-                  }`}
+                    }`}
                   title={collapsed ? item.name : undefined}
                 >
                   <Icon className="w-5 h-5 shrink-0" />
@@ -356,11 +356,10 @@ function DashboardContent({ children }) {
                       key={item.href}
                       href={item.href}
                       onClick={() => setMobileDrawerOpen(false)}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition ${
-                        isActive
+                      className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition ${isActive
                           ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
                           : "bg-[#F7F6F3] dark:bg-[#252525] text-gray-700 dark:text-gray-200"
-                      }`}
+                        }`}
                     >
                       <Icon className="w-4 h-4 shrink-0" />
                       <span className="truncate">{item.name}</span>
