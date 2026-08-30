@@ -3,7 +3,7 @@ import { buildDynamicRAGPrompt } from "@/lib/ai/rag-engine";
 
 export async function POST(request) {
   try {
-    const { userId, personaId, query: userQuery, chatHistory } = await request.json();
+    const { userId, personaId, query: userQuery, chatHistory, imageBase64 } = await request.json();
 
     if (!userQuery || !userQuery.trim()) {
       return new Response(JSON.stringify({ error: "Query prompt is required." }), {
@@ -22,12 +22,29 @@ export async function POST(request) {
     // 1. Assemble Dynamic RAG Prompt
     const promptText = await buildDynamicRAGPrompt(
       userId,
-      personaId || "cfo",
+      personaId || "cmo",
       userQuery.trim(),
       chatHistory || []
     );
 
-    // 2. Query Gemini Generative AI Model Stream with fallbacks
+    // Prepare contents array for Gemini Multimodal Vision if imageBase64 is present
+    const contentsPayload = [];
+
+    if (imageBase64 && typeof imageBase64 === "string") {
+      const matches = imageBase64.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+      if (matches) {
+        contentsPayload.push({
+          inlineData: {
+            mimeType: matches[1],
+            data: matches[2],
+          },
+        });
+      }
+    }
+
+    contentsPayload.push(promptText);
+
+    // 2. Query Gemini Multimodal Generative AI Model Stream
     const modelsToTry = [
       "gemini-3.7-flash",
       "gemini-3.6-flash",
@@ -40,7 +57,7 @@ export async function POST(request) {
     for (const modelName of modelsToTry) {
       try {
         const model = genAI.getGenerativeModel({ model: modelName });
-        resultStream = await model.generateContentStream(promptText);
+        resultStream = await model.generateContentStream(contentsPayload);
         if (resultStream) break;
       } catch (err) {
         console.warn(`Stream model ${modelName} failed, trying fallback:`, err.message);
