@@ -117,6 +117,34 @@ export async function fetchLiveMerchantContext(userId: string) {
       // Ignore
     }
 
+    // Live Orders & Store Financial Revenue
+    let totalRevenue = 0;
+    let totalOrdersCount = 0;
+    let pendingOrdersCount = 0;
+    try {
+      const ordersSnap = await getDocs(collection(db, "users", userId, "orders"));
+      totalOrdersCount = ordersSnap.size;
+      ordersSnap.docs.forEach((d) => {
+        const data = d.data();
+        const amt = parseFloat(data.amount || data.totalAmount || 0);
+        totalRevenue += amt;
+        if ((data.status || "pending").toLowerCase() === "pending") {
+          pendingOrdersCount++;
+        }
+        if (data.timestamp || data.createdAt) {
+          rawTxDocs.push({
+            id: d.id,
+            amount: amt,
+            category: "Sales Revenue",
+            createdAt: data.timestamp || data.createdAt,
+            name: `Order #${data.orderId || d.id}`,
+          });
+        }
+      });
+    } catch {
+      // Ignore
+    }
+
     const transactions = validateAndNormalizeTransactions(rawTxDocs);
 
     return {
@@ -125,6 +153,9 @@ export async function fetchLiveMerchantContext(userId: string) {
       productsCount,
       lowStockProducts,
       totalCatalogValue,
+      totalRevenue,
+      totalOrdersCount,
+      pendingOrdersCount,
       pendingLeadsCount,
       totalLeadsCount,
       recentPostsCount,
@@ -194,8 +225,10 @@ ${persona.systemPrompt}
 === LIVE MERCHANT CONTEXT ===
 • Merchant Name: ${liveContext.merchantName}
 • Business Type: ${liveContext.businessType || "Retail Store"}
+• Total Store Sales Revenue: ₹${(liveContext.totalRevenue || 0).toLocaleString()}
+• Total Orders Processed: ${liveContext.totalOrdersCount || 0} (${liveContext.pendingOrdersCount || 0} pending)
 • Total Active Products: ${liveContext.productsCount}
-• Inventory Valuation: ₹${liveContext.totalCatalogValue.toLocaleString()}
+• Inventory Catalog Valuation: ₹${liveContext.totalCatalogValue.toLocaleString()}
 • Low / Out-of-Stock Items: ${lowStockSummary}
 • Pending Customer Call Leads: ${liveContext.pendingLeadsCount} out of ${liveContext.totalLeadsCount}
 • Published Store Updates / Posts: ${liveContext.recentPostsCount}

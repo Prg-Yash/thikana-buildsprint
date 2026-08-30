@@ -172,7 +172,18 @@ export function CartPage() {
       const orderTimestamp = new Date().toISOString();
       const customOrderId = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
 
+      const formattedItems = products.map((p) => ({
+        id: p.id,
+        productId: p.id,
+        name: p.name || p.title || "Product",
+        title: p.name || p.title || "Product",
+        price: parseFloat(p.price || 0),
+        quantity: parseInt(p.quantity || 1, 10),
+        imageUrl: p.imageUrl || p.image || "",
+      }));
+
       const orderPayload = {
+        id: customOrderId,
         orderId: customOrderId,
         paymentId,
         razorpayOrderId,
@@ -182,26 +193,33 @@ export function CartPage() {
         customerName: user.displayName || user.name || "Customer",
         customerEmail: user.email || "",
         customerPhone: user.phone || "",
-        items: products.map((p) => ({
-          productId: p.id,
-          name: p.name,
-          price: p.price,
-          quantity: p.quantity,
-          imageUrl: p.imageUrl,
-        })),
+        items: formattedItems,
+        products: formattedItems,
+        amount: storeAmount,
         totalAmount: storeAmount,
         status: "pending",
+        timestamp: orderTimestamp,
         createdAt: orderTimestamp,
         updatedAt: orderTimestamp,
       };
 
-      // 1. Save in Merchant's Orders Ledger: businesses/{businessId}/orders/{customOrderId}
-      const merchantOrderRef = doc(db, "businesses", businessId, "orders", customOrderId);
-      await setDoc(merchantOrderRef, orderPayload);
+      // 1. Save in Merchant's User Ledger: users/{businessId}/orders/{customOrderId} (for Business Dashboard Orders Tab)
+      if (businessId) {
+        const userMerchantOrderRef = doc(db, "users", businessId, "orders", customOrderId);
+        await setDoc(userMerchantOrderRef, orderPayload);
 
-      // 2. Save in Customer's History: users/{user.uid}/orders/{customOrderId}
+        // 2. Save in Merchant's Business Ledger: businesses/{businessId}/orders/{customOrderId}
+        const bizOrderRef = doc(db, "businesses", businessId, "orders", customOrderId);
+        await setDoc(bizOrderRef, orderPayload);
+      }
+
+      // 3. Save in Customer's History: users/{user.uid}/orders/{customOrderId}
       const customerOrderRef = doc(db, "users", user.uid, "orders", customOrderId);
       await setDoc(customerOrderRef, orderPayload);
+
+      // 4. Save in Global root collection: orders/{customOrderId}
+      const globalOrderRef = doc(db, "orders", customOrderId);
+      await setDoc(globalOrderRef, orderPayload);
 
       // 3. Dispatch Transactional Confirmation Email via /api/send-order-email
       fetch("/api/send-order-email", {

@@ -37,7 +37,7 @@ import {
 const NAV_ITEMS = [
   { name: "Home Feed", href: "/feed", icon: Home },
   { name: "Discover / Map", href: "/map", icon: Compass },
-  { name: "AI Business Advisor", href: "/profile/ai-advisor", icon: Bot },
+  { name: "Notifications", href: "/profile/notifications", icon: Bell },
   { name: "Business Profile", href: "/profile", icon: User },
   { name: "Analytics Dashboard", href: "/profile/analytics", icon: BarChart3 },
   { name: "Inventory Management", href: "/profile/inventory", icon: Package },
@@ -231,7 +231,7 @@ function DashboardContent({ children }) {
             <div className="flex items-center gap-2 sm:gap-3">
               {/* Notifications */}
               <Link
-                href="/notifications"
+                href="/profile/notifications"
                 className="p-2.5 rounded-2xl border border-[#DDD8CF] dark:border-white/10 text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition relative"
                 aria-label="Notifications"
               >
