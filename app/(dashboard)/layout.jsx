@@ -30,11 +30,14 @@ import {
   Menu,
   Globe,
   Store,
+  Bot,
+  Sparkles,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { name: "Home Feed", href: "/feed", icon: Home },
   { name: "Discover / Map", href: "/map", icon: Compass },
+  { name: "AI Business Advisor", href: "/profile/ai-advisor", icon: Bot },
   { name: "Business Profile", href: "/profile", icon: User },
   { name: "Analytics Dashboard", href: "/profile/analytics", icon: BarChart3 },
   { name: "Inventory Management", href: "/profile/inventory", icon: Package },
@@ -145,8 +148,8 @@ function DashboardContent({ children }) {
                   key={item.href}
                   href={item.href}
                   className={`flex items-center gap-3.5 px-3 py-3 rounded-2xl text-sm font-semibold transition-colors ${isActive
-                      ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] shadow-sm"
-                      : "text-gray-600 dark:text-gray-400 hover:bg-[#EEEAE4] dark:hover:bg-white/5 hover:text-[#1A1A1A] dark:hover:text-white"
+                    ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] shadow-sm"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-[#EEEAE4] dark:hover:bg-white/5 hover:text-[#1A1A1A] dark:hover:text-white"
                     }`}
                   title={collapsed ? item.name : undefined}
                 >
@@ -374,8 +377,8 @@ function DashboardContent({ children }) {
                       href={item.href}
                       onClick={() => setMobileDrawerOpen(false)}
                       className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition ${isActive
-                          ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
-                          : "bg-[#F7F6F3] dark:bg-[#252525] text-gray-700 dark:text-gray-200"
+                        ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
+                        : "bg-[#F7F6F3] dark:bg-[#252525] text-gray-700 dark:text-gray-200"
                         }`}
                     >
                       <Icon className="w-4 h-4 shrink-0" />

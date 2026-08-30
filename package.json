@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@pinecone-database/pinecone": "^8.2.0",
     "clsx": "^2.1.1",
     "firebase": "^12.18.0",
     "framer-motion": "^13.1.1",
@@ -19,6 +21,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hot-toast": "^2.6.0",
+    "react-markdown": "^10.1.0",
     "react-to-print": "^3.3.0",
     "recharts": "^3.10.1",
     "tailwind-merge": "^3.6.0",

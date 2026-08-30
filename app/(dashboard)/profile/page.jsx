@@ -44,7 +44,9 @@ import {
   ShieldCheck,
   Clock,
   Trash2,
+  Bot,
   Wrench,
+  Sparkles,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -162,27 +164,27 @@ export default function ProfilePage() {
             data.images && data.images.length > 0
               ? data.images
               : data.mediaUrl
-              ? [data.mediaUrl]
-              : data.imageUrl
-              ? [data.imageUrl]
-              : [];
+                ? [data.mediaUrl]
+                : data.imageUrl
+                  ? [data.imageUrl]
+                  : [];
 
           const caption = data.caption || data.content || data.description || "";
           const likeCount =
             typeof data.likeCount === "number"
               ? data.likeCount
               : typeof data.likesCount === "number"
-              ? data.likesCount
-              : typeof data.likes === "number"
-              ? data.likes
-              : data.interactions?.likeCount || 0;
+                ? data.likesCount
+                : typeof data.likes === "number"
+                  ? data.likes
+                  : data.interactions?.likeCount || 0;
 
           const commentCount =
             typeof data.commentCount === "number"
               ? data.commentCount
               : typeof data.commentsCount === "number"
-              ? data.commentsCount
-              : 0;
+                ? data.commentsCount
+                : 0;
 
           return {
             id,
@@ -427,6 +429,14 @@ export default function ProfilePage() {
 
             {/* Header Action Buttons */}
             <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/profile/ai-advisor"
+                className="px-4 py-2.5 rounded-2xl bg-[#1A1A1A] hover:bg-black dark:bg-white dark:hover:bg-gray-100 text-white dark:text-[#1A1A1A] text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+              >
+                <Sparkles className="w-4 h-4 text-[#C8B99A]" />
+                <span>AI Advisory Hub</span>
+              </Link>
+
               <button
                 onClick={() => setEditProfileModalOpen(true)}
                 className="px-3.5 py-2.5 rounded-2xl border border-[#E5E0D8] dark:border-white/10 hover:bg-[#F4F1EA] dark:hover:bg-white/5 text-xs font-bold text-[#1A1A1A] dark:text-white transition flex items-center gap-1.5"
@@ -440,7 +450,7 @@ export default function ProfilePage() {
                   onClick={() => setBusinessDetailsDialogOpen(true)}
                   className="px-3.5 py-2.5 rounded-2xl border border-[#E5E0D8] dark:border-white/10 hover:bg-[#F4F1EA] dark:hover:bg-white/5 text-xs font-bold text-[#1A1A1A] dark:text-white transition flex items-center gap-1.5"
                 >
-                  <Building2 className="w-4 h-4 text-purple-600" />
+                  <Building2 className="w-4 h-4 text-[#4A7C6F]" />
                   <span>Business Info</span>
                 </button>
               )}
@@ -448,7 +458,7 @@ export default function ProfilePage() {
               {businessData?.username && (
                 <Link
                   href={`/${businessData.username}`}
-                  className="px-4 py-2.5 rounded-2xl bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] hover:opacity-90 text-xs font-bold transition flex items-center gap-2 shadow-sm"
+                  className="px-4 py-2.5 rounded-2xl border border-[#1A1A1A] dark:border-white hover:bg-black/5 dark:hover:bg-white/10 text-xs font-bold text-[#1A1A1A] dark:text-white transition flex items-center gap-2 shadow-2xs"
                 >
                   <Store className="w-4 h-4" />
                   <span>Public Store</span>
@@ -461,31 +471,38 @@ export default function ProfilePage() {
             {profileData?.bio}
           </p>
 
-          <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 font-medium pt-3 border-t border-[#E5E0D8] dark:border-white/10">
-            <span className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300 pt-3 border-t border-[#E5E0D8] dark:border-white/10">
+            <span className="px-3 py-1 rounded-xl bg-[#F7F6F3] dark:bg-[#252525] border border-[#E5E0D8] dark:border-white/5 flex items-center gap-1.5">
               <Mail className="w-3.5 h-3.5 text-gray-400" />
               {profileData?.email}
             </span>
 
             {profileData?.phone && (
-              <span className="flex items-center gap-1.5">
+              <span className="px-3 py-1 rounded-xl bg-[#F7F6F3] dark:bg-[#252525] border border-[#E5E0D8] dark:border-white/5 flex items-center gap-1.5">
                 <Phone className="w-3.5 h-3.5 text-gray-400" />
                 {profileData.phone}
               </span>
             )}
 
-            <span className="flex items-center gap-1.5">
+            <span className="px-3 py-1 rounded-xl bg-[#F7F6F3] dark:bg-[#252525] border border-[#E5E0D8] dark:border-white/5 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-gray-400" />
               Joined {profileData?.createdAtFormatted}
             </span>
+
+            {businessData?.locationAddress && (
+              <span className="px-3 py-1 rounded-xl bg-[#F7F6F3] dark:bg-[#252525] border border-[#E5E0D8] dark:border-white/5 flex items-center gap-1.5 max-w-xs truncate">
+                <MapPin className="w-3.5 h-3.5 text-[#4A7C6F]" />
+                <span className="truncate">{businessData.locationAddress}</span>
+              </span>
+            )}
 
             {businessData?.activeWebsiteId && (
               <Link
                 href={`/site/${businessData.activeWebsiteId}`}
                 target="_blank"
-                className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold hover:underline"
+                className="px-3 py-1 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold border border-blue-500/20 flex items-center gap-1.5 hover:underline"
               >
-                <Store className="w-3.5 h-3.5" /> Live Store Website
+                <Store className="w-3.5 h-3.5" /> Live Website
               </Link>
             )}
 
@@ -496,13 +513,13 @@ export default function ProfilePage() {
                   href={link.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-1 text-emerald-600 font-bold hover:underline"
+                  className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20 flex items-center gap-1.5 hover:underline"
                 >
-                  <span>{link.platform}: {link.url.replace("https://", "")}</span>
+                  <span>{link.platform}</span>
                 </a>
               ))}
 
-            <span className="px-2.5 py-0.5 rounded-full bg-[#F4F1EA] dark:bg-white/10 text-[#1A1A1A] dark:text-gray-200 font-bold uppercase text-[10px]">
+            <span className="px-3 py-1 rounded-xl bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] font-bold uppercase text-[10px]">
               {profileData?.accountType}
             </span>
           </div>
@@ -562,11 +579,10 @@ export default function ProfilePage() {
       <div className="flex items-center gap-2 border-b border-[#E5E0D8] dark:border-white/10 pb-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab("posts")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition whitespace-nowrap ${
-            activeTab === "posts"
-              ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
-              : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition whitespace-nowrap ${activeTab === "posts"
+            ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
+            : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
+            }`}
         >
           <Grid className="w-4 h-4" />
           <span>Posts ({userPosts.length})</span>
@@ -574,11 +590,10 @@ export default function ProfilePage() {
 
         <button
           onClick={() => setActiveTab("products")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition whitespace-nowrap ${
-            activeTab === "products"
-              ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
-              : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition whitespace-nowrap ${activeTab === "products"
+            ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
+            : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
+            }`}
         >
           <ShoppingBag className="w-4 h-4" />
           <span>Products ({userProducts.length})</span>
@@ -586,11 +601,10 @@ export default function ProfilePage() {
 
         <button
           onClick={() => setActiveTab("services")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition whitespace-nowrap ${
-            activeTab === "services"
-              ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
-              : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition whitespace-nowrap ${activeTab === "services"
+            ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
+            : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
+            }`}
         >
           <Wrench className="w-4 h-4" />
           <span>Services ({userServices.length})</span>
@@ -598,11 +612,10 @@ export default function ProfilePage() {
 
         <button
           onClick={() => setActiveTab("photos")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition whitespace-nowrap ${
-            activeTab === "photos"
-              ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
-              : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition whitespace-nowrap ${activeTab === "photos"
+            ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
+            : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
+            }`}
         >
           <ImageIcon className="w-4 h-4" />
           <span>Photos Gallery ({userPhotos.length})</span>
@@ -610,11 +623,10 @@ export default function ProfilePage() {
 
         <button
           onClick={() => setActiveTab("saved")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition whitespace-nowrap ${
-            activeTab === "saved"
-              ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
-              : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition whitespace-nowrap ${activeTab === "saved"
+            ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A]"
+            : "text-gray-600 dark:text-gray-400 hover:bg-[#F4F1EA] dark:hover:bg-white/5"
+            }`}
         >
           <Bookmark className="w-4 h-4" />
           <span>Saved ({savedPosts.length})</span>
@@ -674,8 +686,8 @@ export default function ProfilePage() {
                         {typeof prod.ratings === "number" || typeof prod.ratings === "string"
                           ? prod.ratings
                           : typeof prod.ratings === "object" && prod.ratings?.average !== undefined
-                          ? prod.ratings.average
-                          : "4.8"}
+                            ? prod.ratings.average
+                            : "4.8"}
                       </span>
                     </div>
                   </div>
