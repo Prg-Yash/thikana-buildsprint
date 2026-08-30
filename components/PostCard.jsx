@@ -263,7 +263,7 @@ export function PostCard({ post, currentUserId, onDelete, onUpdate }) {
   };
 
   return (
-    <article className="bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 p-5 shadow-sm space-y-4 hover:border-[#C8B99A] dark:hover:border-white/20 transition-all duration-200">
+    <article className="bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 p-5 shadow-sm flex flex-col justify-between h-full space-y-4 hover:border-[#C8B99A] dark:hover:border-white/20 transition-all duration-200">
       {/* 1. Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">

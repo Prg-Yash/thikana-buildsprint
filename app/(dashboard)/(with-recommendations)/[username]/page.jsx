@@ -3,6 +3,7 @@
 import React, { useState, useEffect, use } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -34,6 +35,7 @@ import {
 import toast from "react-hot-toast";
 
 export default function StorefrontPage({ params }) {
+  const { user } = useAuth();
   const unwrappedParams = use(params);
   const username = unwrappedParams?.username || "";
 
@@ -611,7 +613,11 @@ export default function StorefrontPage({ params }) {
       <div className="space-y-4">
         {activeTab === "posts" && (
           posts.length > 0 ? (
-            posts.map((post) => <PostCard key={post.id} post={post} />)
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+              {posts.map((post) => (
+                <PostCard key={post.id} post={post} currentUserId={user?.uid} />
+              ))}
+            </div>
           ) : (
             <div className="p-8 text-center bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 text-xs text-gray-500">
               No store updates published yet.

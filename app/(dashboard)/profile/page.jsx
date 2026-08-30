@@ -626,14 +626,16 @@ export default function ProfilePage() {
         {/* Posts Tab */}
         {activeTab === "posts" && (
           userPosts.length > 0 ? (
-            userPosts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                currentUserId={user?.uid}
-                onDelete={handlePostDeleted}
-              />
-            ))
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+              {userPosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  currentUserId={user?.uid}
+                  onDelete={handlePostDeleted}
+                />
+              ))}
+            </div>
           ) : (
             <div className="p-12 text-center bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 space-y-3">
               <PlusSquare className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto" />
@@ -742,9 +744,11 @@ export default function ProfilePage() {
         {/* Saved Bookmarks Tab */}
         {activeTab === "saved" && (
           savedPosts.length > 0 ? (
-            savedPosts.map((post) => (
-              <PostCard key={post.id} post={post} currentUserId={user?.uid} />
-            ))
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+              {savedPosts.map((post) => (
+                <PostCard key={post.id} post={post} currentUserId={user?.uid} />
+              ))}
+            </div>
           ) : (
             <div className="p-12 text-center bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 space-y-3">
               <Bookmark className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto" />
