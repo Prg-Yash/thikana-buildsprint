@@ -102,20 +102,55 @@ function SearchPageContent() {
     }
   }, []);
 
-  // Fetch store items from Firestore
+  // Fetch business stores strictly from Firestore (excluding normal consumer accounts)
   useEffect(() => {
     const fetchStores = async () => {
       setLoading(true);
       try {
-        const q = query(collection(db, "businesses"), limit(50));
-        const snap = await getDocs(q);
-        const fetched = [];
-        snap.forEach((doc) => {
-          fetched.push({ id: doc.id, ...doc.data() });
+        const fetchedMap = new Map();
+
+        // 1. Query `businesses` collection
+        const qBiz = query(collection(db, "businesses"), limit(50));
+        const bizSnap = await getDocs(qBiz);
+        bizSnap.forEach((d) => {
+          const data = d.data();
+          const bizName = data.businessName || data.name || "Local Business";
+          const username = data.username || bizName.toLowerCase().replace(/[^\w]+/g, "-");
+          fetchedMap.set(d.id, {
+            id: d.id,
+            username,
+            ...data,
+            businessName: bizName,
+          });
         });
-        setBusinesses(fetched);
+
+        // 2. Query `users` collection specifically where accountType == "business" or isBusiness == true
+        const qUsers = query(collection(db, "users"), limit(100));
+        const usersSnap = await getDocs(qUsers);
+        usersSnap.forEach((d) => {
+          const uData = d.data();
+          if (
+            uData.accountType === "business" ||
+            uData.isBusiness === true ||
+            uData.businessName ||
+            uData.role === "business"
+          ) {
+            if (!fetchedMap.has(d.id)) {
+              const bizName = uData.businessName || uData.displayName || uData.name || "Local Business";
+              const username = uData.username || bizName.toLowerCase().replace(/[^\w]+/g, "-");
+              fetchedMap.set(d.id, {
+                id: d.id,
+                username,
+                ...uData,
+                businessName: bizName,
+              });
+            }
+          }
+        });
+
+        setBusinesses(Array.from(fetchedMap.values()));
       } catch (err) {
-        console.error("Error fetching businesses:", err);
+        console.error("Error fetching businesses for search:", err);
       } finally {
         setLoading(false);
       }

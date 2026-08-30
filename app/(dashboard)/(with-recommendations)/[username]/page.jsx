@@ -54,7 +54,25 @@ export default function StorefrontPage({ params }) {
   const [clientPhone, setClientPhone] = useState("");
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
-  const [submittingBooking, setSubmittingBooking] = useState(false);
+  const isOwnProfile =
+    user?.uid &&
+    storeData &&
+    (user.uid === storeData.id ||
+      user.uid === storeData.adminId ||
+      user.uid === storeData.ownerId ||
+      user.uid === storeData.uid);
+
+  // Canonical URL replacement: Update URL from raw document ID to human-readable store username
+  useEffect(() => {
+    if (
+      storeData?.username &&
+      username &&
+      username !== storeData.username &&
+      typeof window !== "undefined"
+    ) {
+      window.history.replaceState({}, "", `/store/${storeData.username}`);
+    }
+  }, [storeData, username]);
 
   useEffect(() => {
     async function loadStorefrontData() {
@@ -547,17 +565,27 @@ export default function StorefrontPage({ params }) {
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsFollowing(!isFollowing)}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 ${
-                  isFollowing
-                    ? "bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200 hover:bg-gray-200"
-                    : "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] hover:opacity-90"
-                }`}
-              >
-                {isFollowing ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-                <span>{isFollowing ? "Following" : "Follow"}</span>
-              </button>
+              {!isOwnProfile ? (
+                <button
+                  onClick={() => setIsFollowing(!isFollowing)}
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 ${
+                    isFollowing
+                      ? "bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200 hover:bg-gray-200"
+                      : "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] hover:opacity-90"
+                  }`}
+                >
+                  {isFollowing ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                  <span>{isFollowing ? "Following" : "Follow"}</span>
+                </button>
+              ) : (
+                <Link
+                  href="/profile/settings"
+                  className="px-4 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 font-extrabold text-xs transition flex items-center gap-1.5"
+                >
+                  <Store className="w-4 h-4 text-amber-500" />
+                  <span>Your Store Profile</span>
+                </Link>
+              )}
 
               <button
                 onClick={handleOpenDirections}

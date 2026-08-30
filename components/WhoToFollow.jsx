@@ -90,7 +90,7 @@ export function WhoToFollow({ currentUserId, userCoords }) {
             const data = bDoc.data();
             const bId = bDoc.id;
 
-            if (followedIds.has(bId)) continue; // Exclude already followed
+            if (followedIds.has(bId) || bId === currentUserId) continue; // Exclude already followed or self
 
             const coords = extractCoords(data._geoloc) || extractCoords(data.location);
             let dist = bizDistanceMap.get(bId) ?? null;
