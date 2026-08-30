@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@hookform/resolvers": "^5.9.1",
     "@pinecone-database/pinecone": "^8.2.0",
     "clsx": "^2.1.1",
     "firebase": "^12.18.0",
@@ -20,6 +21,7 @@
     "ngeohash": "^0.6.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-hook-form": "^7.87.0",
     "react-hot-toast": "^2.6.0",
     "react-markdown": "^10.1.0",
     "react-to-print": "^3.3.0",

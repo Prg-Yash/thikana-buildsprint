@@ -13,9 +13,13 @@ import {
   doc,
   getDoc,
   addDoc,
+  onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
 import { PostCard } from "@/components/PostCard";
+import { followUser, unfollowUser } from "@/lib/followeringAction";
+import FollowerDialog from "@/components/profile/FollowerDialog";
+import FollowingDialog from "@/components/profile/FollowingDialog";
 import {
   MapPin,
   CheckCircle2,
@@ -31,6 +35,7 @@ import {
   Calendar,
   X,
   Wrench,
+  Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -54,6 +59,92 @@ export default function StorefrontPage({ params }) {
   const [clientPhone, setClientPhone] = useState("");
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [followerModalOpen, setFollowerModalOpen] = useState(false);
+  const [followingModalOpen, setFollowingModalOpen] = useState(false);
+  const [togglingFollow, setTogglingFollow] = useState(false);
+
+  // 1. Real-time Followers and Following Counters
+  useEffect(() => {
+    if (!storeData?.id) return;
+
+    // Real-time Followers Listener: users/{bizId}/followers
+    const followersRef = collection(db, "users", storeData.id, "followers");
+    const unsubscribeFollowers = onSnapshot(
+      followersRef,
+      (snapshot) => {
+        setFollowersCount(snapshot.size);
+      },
+      (err) => console.warn("Followers count snapshot error:", err)
+    );
+
+    // Real-time Following Listener: users/{bizId}/following
+    const followingRef = collection(db, "users", storeData.id, "following");
+    const unsubscribeFollowing = onSnapshot(
+      followingRef,
+      (snapshot) => {
+        setFollowingCount(snapshot.size);
+      },
+      (err) => console.warn("Following count snapshot error:", err)
+    );
+
+    return () => {
+      unsubscribeFollowers();
+      unsubscribeFollowing();
+    };
+  }, [storeData?.id]);
+
+  // 2. Real-time Active `isFollowing` Listener for Current User
+  useEffect(() => {
+    if (!user?.uid || !storeData?.id) {
+      setIsFollowing(false);
+      return;
+    }
+
+    const followDocRef = doc(db, "users", user.uid, "following", storeData.id);
+    const unsubscribeIsFollowing = onSnapshot(
+      followDocRef,
+      (docSnap) => {
+        setIsFollowing(docSnap.exists());
+      },
+      (err) => console.warn("isFollowing snapshot error:", err)
+    );
+
+    return () => unsubscribeIsFollowing();
+  }, [user?.uid, storeData?.id]);
+
+  // 3. Handle Follow / Unfollow Toggle
+  const handleFollowToggle = async () => {
+    if (!user?.uid) {
+      toast.error("Please sign in to follow stores!");
+      return;
+    }
+
+    if (isOwnProfile) {
+      toast.error("You cannot follow your own store profile.");
+      return;
+    }
+
+    setTogglingFollow(true);
+    try {
+      if (isFollowing) {
+        toast.success(`Unfollowed ${storeData.name || "merchant"}`);
+        await unfollowUser(user.uid, storeData.id);
+      } else {
+        toast.success(`Following ${storeData.name || "merchant"}! 🎉`);
+        await followUser(user.uid, storeData.id, {
+          displayName: user.displayName || user.name || "Local Shopper",
+          username: user.username || user.displayName?.toLowerCase().replace(/\s+/g, "-") || user.uid,
+        });
+      }
+    } catch (err) {
+      console.error("Follow toggle error:", err);
+      toast.error("Failed to update follow status.");
+    } finally {
+      setTogglingFollow(false);
+    }
+  };
   const isOwnProfile =
     user?.uid &&
     storeData &&
@@ -567,14 +658,21 @@ export default function StorefrontPage({ params }) {
             <div className="flex items-center gap-2">
               {!isOwnProfile ? (
                 <button
-                  onClick={() => setIsFollowing(!isFollowing)}
+                  onClick={handleFollowToggle}
+                  disabled={togglingFollow}
                   className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 ${
                     isFollowing
                       ? "bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200 hover:bg-gray-200"
                       : "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] hover:opacity-90"
                   }`}
                 >
-                  {isFollowing ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                  {togglingFollow ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : isFollowing ? (
+                    <UserCheck className="w-4 h-4 text-emerald-500" />
+                  ) : (
+                    <UserPlus className="w-4 h-4" />
+                  )}
                   <span>{isFollowing ? "Following" : "Follow"}</span>
                 </button>
               ) : (
@@ -618,9 +716,22 @@ export default function StorefrontPage({ params }) {
               <Clock className="w-3.5 h-3.5 text-gray-400" />
               {storeData?.operatingHours}
             </span>
-            <span className="font-bold text-[#1A1A1A] dark:text-white">
-              {storeData?.followersCount || 0} Followers
-            </span>
+            <button
+              type="button"
+              onClick={() => setFollowerModalOpen(true)}
+              className="font-extrabold text-[#1A1A1A] dark:text-white hover:underline flex items-center gap-1.5 bg-[#F7F6F3] dark:bg-[#262626] px-3 py-1.5 rounded-xl border border-[#DDD8CF] dark:border-white/10 transition"
+            >
+              <Users className="w-3.5 h-3.5 text-amber-500" />
+              <span>{followersCount} Followers</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFollowingModalOpen(true)}
+              className="font-extrabold text-[#1A1A1A] dark:text-white hover:underline flex items-center gap-1.5 bg-[#F7F6F3] dark:bg-[#262626] px-3 py-1.5 rounded-xl border border-[#DDD8CF] dark:border-white/10 transition"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-blue-500" />
+              <span>{followingCount} Following</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1006,6 +1117,22 @@ export default function StorefrontPage({ params }) {
           </div>
         </div>
       )}
+
+      {/* FOLLOWERS & FOLLOWING DIALOG MODALS */}
+      <FollowerDialog
+        open={followerModalOpen}
+        onClose={() => setFollowerModalOpen(false)}
+        targetUserId={storeData?.id}
+        storeName={storeData?.name}
+        viewOnly={!isOwnProfile}
+      />
+      <FollowingDialog
+        open={followingModalOpen}
+        onClose={() => setFollowingModalOpen(false)}
+        targetUserId={storeData?.id}
+        storeName={storeData?.name}
+        currentUserId={user?.uid}
+      />
     </div>
   );
 }

@@ -17,15 +17,17 @@ import {
   CreditCard,
   Building2,
   Shield,
+  FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import RazorpaySettingsTab from "@/components/dashboard/RazorpaySettingsTab";
+import BusinessInfoForm from "@/components/dashboard/BusinessInfoForm";
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState("general"); // 'general' | 'razorpay'
+  const [activeTab, setActiveTab] = useState("general"); // 'general' | 'business_info' | 'razorpay'
 
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
@@ -131,12 +133,12 @@ export default function SettingsPage() {
           Account & Merchant Settings
         </h1>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Manage your account profile, merchant branding, and payment gateway integrations.
+          Manage your account profile, merchant branding, enterprise metadata, and payment gateway integrations.
         </p>
       </div>
 
       {/* Settings Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-[#E5E0D8] dark:border-white/10 pb-1">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#E5E0D8] dark:border-white/10 pb-1">
         <button
           onClick={() => setActiveTab("general")}
           className={`px-4 py-2.5 rounded-2xl font-extrabold text-xs transition flex items-center gap-2 ${
@@ -147,6 +149,18 @@ export default function SettingsPage() {
         >
           <Building2 className="w-4 h-4" />
           <span>General Profile & Store</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("business_info")}
+          className={`px-4 py-2.5 rounded-2xl font-extrabold text-xs transition flex items-center gap-2 ${
+            activeTab === "business_info"
+              ? "bg-[#1A1A1A] text-white dark:bg-white dark:text-[#1A1A1A] shadow-xs"
+              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5"
+          }`}
+        >
+          <FileText className="w-4 h-4 text-blue-500" />
+          <span>Business Information</span>
         </button>
 
         <button
@@ -299,6 +313,8 @@ export default function SettingsPage() {
             <span>{isSubmitting ? "Saving Changes..." : "Save Profile Settings"}</span>
           </button>
         </form>
+      ) : activeTab === "business_info" ? (
+        <BusinessInfoForm readOnly={false} />
       ) : (
         <RazorpaySettingsTab />
       )}
