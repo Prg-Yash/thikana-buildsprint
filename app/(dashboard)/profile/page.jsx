@@ -455,9 +455,9 @@ export default function ProfilePage() {
                 </button>
               )}
 
-              {businessData?.username && (
+              {(businessData?.username || profileData?.username || user?.uid) && (
                 <Link
-                  href={`/${businessData.username}`}
+                  href={`/store/${businessData?.username || profileData?.username || user?.uid}`}
                   className="px-4 py-2.5 rounded-2xl border border-[#1A1A1A] dark:border-white hover:bg-black/5 dark:hover:bg-white/10 text-xs font-bold text-[#1A1A1A] dark:text-white transition flex items-center gap-2 shadow-2xs"
                 >
                   <Store className="w-4 h-4" />

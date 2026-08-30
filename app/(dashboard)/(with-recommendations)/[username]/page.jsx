@@ -91,13 +91,52 @@ export default function StorefrontPage({ params }) {
             fetchedStore = {
               id: bizId,
               ...uDoc,
-              name: uDoc.name || uDoc.displayName || "Local Merchant",
+              name: uDoc.name || uDoc.displayName || uDoc.businessName || "Local Merchant",
               logo: uDoc.profilePic || uDoc.avatar || "",
               coverImage: uDoc.coverPic || "",
               address: uDoc.locationAddress || "Location address not set",
               operatingHours: "Mon-Sat 9 AM - 8 PM",
               bio: uDoc.bio || "Verified local business on Thikana.",
             };
+          }
+        }
+
+        // Direct ID lookup fallback if username was passed as document ID
+        if (!fetchedStore && username) {
+          try {
+            const directBizSnap = await getDoc(doc(db, "businesses", username));
+            if (directBizSnap.exists()) {
+              const bDoc = directBizSnap.data();
+              bizId = directBizSnap.id;
+              fetchedStore = {
+                id: bizId,
+                ...bDoc,
+                name: bDoc.businessName || bDoc.adminName || "Local Merchant",
+                logo: bDoc.profilePic || bDoc.avatar || bDoc.logo || "",
+                coverImage: bDoc.coverPic || bDoc.coverImage || "",
+                address: bDoc.locationAddress || bDoc.address?.formatted || "Location address not set",
+                operatingHours: "Mon-Sat 9 AM - 8 PM",
+                bio: bDoc.bio || bDoc.description || "Verified local merchant on Thikana.",
+              };
+            } else {
+              const directUserSnap = await getDoc(doc(db, "users", username));
+              if (directUserSnap.exists()) {
+                const uDoc = directUserSnap.data();
+                bizId = directUserSnap.id;
+                fetchedStore = {
+                  id: bizId,
+                  ...uDoc,
+                  name: uDoc.name || uDoc.displayName || uDoc.businessName || "Local Merchant",
+                  logo: uDoc.profilePic || uDoc.avatar || "",
+                  coverImage: uDoc.coverPic || "",
+                  address: uDoc.locationAddress || "Location address not set",
+                  operatingHours: "Mon-Sat 9 AM - 8 PM",
+                  bio: uDoc.bio || "Verified local business on Thikana.",
+                };
+              }
+            }
+          } catch (err) {
+            console.warn("Direct doc lookup fallback:", err);
           }
         }
 

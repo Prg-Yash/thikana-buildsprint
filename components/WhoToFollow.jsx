@@ -209,7 +209,7 @@ export function WhoToFollow({ currentUserId, userCoords }) {
             return (
               <div key={biz.id} className="flex items-center justify-between gap-3">
                 <Link
-                  href={`/${biz.username || biz.id}`}
+                  href={`/store/${biz.username || biz.id}`}
                   className="flex items-center gap-3 min-w-0 flex-1 group"
                 >
                   <div className="relative w-10 h-10 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 shrink-0 border border-gray-200 dark:border-white/10">

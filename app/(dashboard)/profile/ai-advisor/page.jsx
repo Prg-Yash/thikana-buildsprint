@@ -12,6 +12,7 @@ import {
   getDocs,
   addDoc,
   setDoc,
+  updateDoc,
   query,
   orderBy,
   limit,
@@ -51,6 +52,12 @@ import {
   Lock,
   UserCheck,
   ShieldAlert,
+  PlusCircle,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle,
+  DollarSign,
+  Layers,
 } from "lucide-react";
 
 const PERSONA_ICONS = {
@@ -90,20 +97,26 @@ export default function AIAdvisorPage() {
   const [hasMoreChats, setHasMoreChats] = useState(true);
   const [oldestDocSnap, setOldestDocSnap] = useState(null);
 
-  // Input & Edit Modal State
+  // Live Inventory State for Ops Manager
+  const [liveInventory, setLiveInventory] = useState([]);
+  const [loadingInventory, setLoadingInventory] = useState(false);
+
+  // Input & Action Processing State
   const [inputQuery, setInputQuery] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [processingActionIdx, setProcessingActionIdx] = useState(null);
+
+  // Edit Post Modal State for CMO
   const [editingModalOpen, setEditingModalOpen] = useState(false);
   const [editCaption, setEditCaption] = useState("");
   const [editCategory, setEditCategory] = useState("Promotions");
   const [editImageUrl, setEditImageUrl] = useState("");
   const [isPublishingPost, setIsPublishingPost] = useState(false);
-  const [publishingMessageIdx, setPublishingMessageIdx] = useState(null);
 
   const currentPersona = PERSONAS[selectedPersona] || PERSONAS.cfo;
   const ActiveIcon = PERSONA_ICONS[selectedPersona] || Landmark;
 
-  // 1. Real-time Subscription to Active Persona Locks for the Business
+  // 1. Real-time Subscription to Active Persona Locks
   useEffect(() => {
     if (!businessId) return;
     const unsubscribe = subscribePersonaLocks(businessId, (locksMap) => {
@@ -112,14 +125,13 @@ export default function AIAdvisorPage() {
     return () => unsubscribe();
   }, [businessId]);
 
-  // 2. Lock Acquisition & Heartbeat Management on Persona Selection / Unmount
+  // 2. Lock Acquisition & Heartbeat Management
   useEffect(() => {
     if (!businessId || !user?.uid) return;
 
     let isMounted = true;
 
     async function handleLock() {
-      // Check if persona is occupied by another team member
       const lockData = activeLocks[selectedPersona];
       if (lockData && lockData.uid !== user.uid) {
         if (isMounted) {
@@ -129,7 +141,6 @@ export default function AIAdvisorPage() {
         return;
       }
 
-      // Try acquiring lock
       const lockRes = await acquirePersonaLock(businessId, selectedPersona, user);
       if (!isMounted) return;
 
@@ -137,7 +148,6 @@ export default function AIAdvisorPage() {
         setIsLockedByOther(false);
         setLockOwner(null);
 
-        // Start 10s Heartbeat
         if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
         heartbeatIntervalRef.current = setInterval(() => {
           refreshPersonaLock(businessId, selectedPersona, user.uid);
@@ -156,12 +166,11 @@ export default function AIAdvisorPage() {
         clearInterval(heartbeatIntervalRef.current);
         heartbeatIntervalRef.current = null;
       }
-      // Release lock on unmount or persona switch
       releasePersonaLock(businessId, selectedPersona, user.uid);
     };
   }, [businessId, selectedPersona, user, activeLocks]);
 
-  // Handle BeforeUnload window close to release lock
+  // Handle BeforeUnload
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (businessId && selectedPersona && user?.uid) {
@@ -172,7 +181,28 @@ export default function AIAdvisorPage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [businessId, selectedPersona, user?.uid]);
 
-  // 3. Load Initial 10 Messages for Selected Persona from Firestore
+  // 3. Fetch Live Inventory for Ops Manager
+  const fetchInventoryData = useCallback(async () => {
+    if (!businessId) return;
+    setLoadingInventory(true);
+    try {
+      const prodSnap = await getDocs(collection(db, "users", businessId, "products"));
+      const list = prodSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setLiveInventory(list);
+    } catch (e) {
+      console.warn("Could not fetch inventory:", e);
+    } finally {
+      setLoadingInventory(false);
+    }
+  }, [businessId]);
+
+  useEffect(() => {
+    if (selectedPersona === "ops") {
+      fetchInventoryData();
+    }
+  }, [selectedPersona, fetchInventoryData]);
+
+  // 4. Load Initial 10 Messages
   const loadInitialChatHistory = useCallback(async () => {
     if (!businessId || !selectedPersona) return;
 
@@ -185,7 +215,6 @@ export default function AIAdvisorPage() {
       const snapshot = await getDocs(q);
 
       if (snapshot.empty) {
-        // Default Greeting Message if no previous chat history exists
         const defaultGreeting = {
           id: `greet_${selectedPersona}`,
           role: "assistant",
@@ -198,18 +227,16 @@ export default function AIAdvisorPage() {
       } else {
         const docs = snapshot.docs;
         const fetchedMessages = docs.map((d) => ({ id: d.id, ...d.data() }));
-        // Reverse so oldest of the 10 is at top, newest at bottom
         fetchedMessages.reverse();
 
         setChatMessages(fetchedMessages);
-        setOldestDocSnap(docs[docs.length - 1]); // Oldest doc among the 10
+        setOldestDocSnap(docs[docs.length - 1]);
         if (docs.length < 10) {
           setHasMoreChats(false);
         }
       }
     } catch (err) {
       console.error("Error loading initial chat history:", err);
-      // Fallback
       setChatMessages([
         {
           id: `greet_${selectedPersona}`,
@@ -229,7 +256,7 @@ export default function AIAdvisorPage() {
     loadInitialChatHistory();
   }, [selectedPersona, loadInitialChatHistory]);
 
-  // 4. Load Next 5 Messages on Scrolling to Top (WhatsApp Style Incremental Pagination)
+  // 5. Load Next 5 Messages on Top Scroll
   const loadMoreMessages = async () => {
     if (!businessId || !selectedPersona || !oldestDocSnap || loadingMoreChats || !hasMoreChats) {
       return;
@@ -255,7 +282,7 @@ export default function AIAdvisorPage() {
       } else {
         const docs = snapshot.docs;
         const olderMessages = docs.map((d) => ({ id: d.id, ...d.data() }));
-        olderMessages.reverse(); // Chronological
+        olderMessages.reverse();
 
         setChatMessages((prev) => [...olderMessages, ...prev]);
         setOldestDocSnap(docs[docs.length - 1]);
@@ -264,7 +291,6 @@ export default function AIAdvisorPage() {
           setHasMoreChats(false);
         }
 
-        // Preserve scroll position so user experience stays anchored (WhatsApp style)
         setTimeout(() => {
           if (container) {
             const newScrollHeight = container.scrollHeight;
@@ -279,7 +305,6 @@ export default function AIAdvisorPage() {
     }
   };
 
-  // Scroll listener for top scroll
   const handleScroll = (e) => {
     const target = e.target;
     if (target.scrollTop <= 10 && hasMoreChats && !loadingMoreChats && !loadingInitialChats) {
@@ -287,7 +312,6 @@ export default function AIAdvisorPage() {
     }
   };
 
-  // Switch persona tab helper
   const handlePersonaSwitch = (newPersona) => {
     if (activeFetchAbortController.current) {
       activeFetchAbortController.current.abort();
@@ -304,7 +328,55 @@ export default function AIAdvisorPage() {
     }
   };
 
-  // Detect post intent strictly for Thikana CMO when user query explicitly requests post creation
+  // Helper parsers for Structured Consent Proposals
+  const parseTransactionProposal = (text) => {
+    if (!text) return null;
+    const match = text.match(/\[PROPOSE_TRANSACTION\]:\s*(\{[\s\S]*?\})/);
+    if (match && match[1]) {
+      try {
+        return JSON.parse(match[1]);
+      } catch (e) {
+        return null;
+      }
+    }
+    // Fallback keyword parsing for finance intent
+    if (/add|record|update|expense|income|spent|earned|revenue/i.test(text)) {
+      const isIncome = /income|earned|received|sales|revenue/i.test(text);
+      const amtMatch = text.match(/₹?\s*([\d,]+)/);
+      const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, "")) : 1000;
+      return {
+        type: isIncome ? "income" : "expense",
+        title: isIncome ? "Sales Revenue Entry" : "Store Expense Item",
+        amount,
+        category: isIncome ? "Sales" : "Supplies",
+      };
+    }
+    return null;
+  };
+
+  const parseInventoryProposal = (text) => {
+    if (!text) return null;
+    const match = text.match(/\[PROPOSE_INVENTORY_UPDATE\]:\s*(\{[\s\S]*?\})/);
+    if (match && match[1]) {
+      try {
+        return JSON.parse(match[1]);
+      } catch (e) {
+        return null;
+      }
+    }
+    if (/add product|update stock|update inventory|set quantity|restock|units/i.test(text)) {
+      const qtyMatch = text.match(/(\d+)\s*(?:units|qty|stock|items)/i);
+      const priceMatch = text.match(/₹?\s*([\d,]+)/);
+      return {
+        name: "Inventory Product Item",
+        quantity: qtyMatch ? parseInt(qtyMatch[1], 10) : 20,
+        price: priceMatch ? parseFloat(priceMatch[1].replace(/,/g, "")) : 499,
+        category: "General Stock",
+      };
+    }
+    return null;
+  };
+
   const checkIsPostIntent = (text, userQuery = "") => {
     if (!text || !userQuery) return false;
     const queryLower = userQuery.toLowerCase().trim();
@@ -335,7 +407,7 @@ export default function AIAdvisorPage() {
 
   const extractDraftCaption = (text) => {
     if (!text) return "Check out our latest store updates and exclusive offers!";
-    let cleaned = text.replace(/```[\s\S]*?```/g, "").trim();
+    let cleaned = text.replace(/\[PROPOSE_POST\][\s\S]*/, "").replace(/```[\s\S]*?```/g, "").trim();
     const match = cleaned.match(/(?:[C|c]aption|[D|d]raft|[P|p]ost):\s*([\s\S]+)/i);
     if (match && match[1]) {
       return match[1].trim();
@@ -343,7 +415,7 @@ export default function AIAdvisorPage() {
     return cleaned;
   };
 
-  // Save Message to Firestore Persistence Ledger
+  // Firestore Message Persistence Helper
   const saveMessageToFirestore = async (msgPayload) => {
     if (!businessId || !selectedPersona) return;
     try {
@@ -360,14 +432,105 @@ export default function AIAdvisorPage() {
     }
   };
 
-  // Handle Direct Post Now
+  // -------------------------------------------------------------
+  // CONSENT ACTION EXECUTION HANDLERS (STRICTLY FOR CURRENT BUSINESS)
+  // -------------------------------------------------------------
+
+  // 1. CFO: Approve & Add/Update Financial Expense/Income Record
+  const handleApproveTransaction = async (proposal, msgIdx) => {
+    if (!businessId) return;
+    setProcessingActionIdx(msgIdx);
+    const toastId = toast.loading(`Committing ${proposal.type} record to finance ledger...`);
+
+    try {
+      const isExpense = proposal.type === "expense";
+      const txPayload = {
+        name: proposal.title || (isExpense ? "Store Expense" : "Sales Revenue"),
+        title: proposal.title || (isExpense ? "Store Expense" : "Sales Revenue"),
+        amount: parseFloat(proposal.amount || 0),
+        category: proposal.category || (isExpense ? "Supplies" : "Sales"),
+        type: isExpense ? "expense" : "income",
+        date: new Date().toISOString().split("T")[0],
+        timestamp: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        createdBy: user?.displayName || "AI CFO Advisor",
+      };
+
+      const colRef = collection(db, "transactions", businessId, "user_transactions");
+      await addDoc(colRef, txPayload);
+
+      setChatMessages((prev) => {
+        const list = [...prev];
+        if (list[msgIdx]) {
+          list[msgIdx] = { ...list[msgIdx], isTransactionApproved: true };
+          saveMessageToFirestore(list[msgIdx]);
+        }
+        return list;
+      });
+
+      toast.success(`Successfully recorded ₹${proposal.amount} ${proposal.type} in finance ledger!`, { id: toastId });
+    } catch (err) {
+      console.error("Error committing transaction:", err);
+      toast.error(`Failed to record transaction: ${err.message}`, { id: toastId });
+    } finally {
+      setProcessingActionIdx(null);
+    }
+  };
+
+  // 2. Ops Manager: Approve & Add/Update Inventory Record
+  const handleApproveInventoryUpdate = async (proposal, msgIdx) => {
+    if (!businessId) return;
+    setProcessingActionIdx(msgIdx);
+    const toastId = toast.loading("Updating inventory record in catalog...");
+
+    try {
+      const prodPayload = {
+        name: proposal.name || "Product Stock Item",
+        price: parseFloat(proposal.price || 0),
+        quantity: parseInt(proposal.quantity || 0, 10),
+        category: proposal.category || "General",
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.displayName || "AI Ops Manager",
+      };
+
+      // Check if product with same name exists
+      const prodsRef = collection(db, "users", businessId, "products");
+      const snap = await getDocs(prodsRef);
+      const existingDoc = snap.docs.find((d) => d.data().name?.toLowerCase() === proposal.name?.toLowerCase());
+
+      if (existingDoc) {
+        await updateDoc(doc(db, "users", businessId, "products", existingDoc.id), prodPayload);
+      } else {
+        await addDoc(prodsRef, { ...prodPayload, createdAt: new Date().toISOString() });
+      }
+
+      setChatMessages((prev) => {
+        const list = [...prev];
+        if (list[msgIdx]) {
+          list[msgIdx] = { ...list[msgIdx], isInventoryApproved: true };
+          saveMessageToFirestore(list[msgIdx]);
+        }
+        return list;
+      });
+
+      fetchInventoryData(); // Refresh live inventory widget
+      toast.success(`Inventory updated for '${proposal.name}' (${proposal.quantity} units)!`, { id: toastId });
+    } catch (err) {
+      console.error("Error updating inventory:", err);
+      toast.error(`Failed to update inventory: ${err.message}`, { id: toastId });
+    } finally {
+      setProcessingActionIdx(null);
+    }
+  };
+
+  // 3. CMO: Direct Post Now
   const handleDirectPostNow = async (msgText, msgIdx) => {
     if (!user?.uid) {
       toast.error("Please sign in to publish posts to your business profile.");
       return;
     }
 
-    setPublishingMessageIdx(msgIdx);
+    setProcessingActionIdx(msgIdx);
     const toastId = toast.loading("Publishing post directly to your business profile...");
 
     try {
@@ -427,7 +590,7 @@ export default function AIAdvisorPage() {
       console.error("Error publishing post:", err);
       toast.error(err.message || "Failed to publish post.", { id: toastId });
     } finally {
-      setPublishingMessageIdx(null);
+      setProcessingActionIdx(null);
     }
   };
 
@@ -501,7 +664,7 @@ export default function AIAdvisorPage() {
     }
   };
 
-  // Send Message & Stream AI Response
+  // Send Message & Stream Response
   const handleSendMessage = async (queryText) => {
     const textToSend = queryText || inputQuery;
     if (!textToSend.trim() || isSubmitting || isLockedByOther) return;
@@ -581,15 +744,12 @@ export default function AIAdvisorPage() {
         });
       }
 
-      // Persist final assistant response to Firestore
       saveMessageToFirestore({
         ...initialAssistantMsg,
         text: accumulatedText,
       });
     } catch (err) {
-      if (err.name === "AbortError") {
-        return;
-      }
+      if (err.name === "AbortError") return;
       console.error("AI Advisor streaming error:", err);
       toast.error(err.message || "Failed to stream advice from AI Advisor.");
 
@@ -672,7 +832,7 @@ export default function AIAdvisorPage() {
             </div>
           </div>
 
-          {/* PRESENCE LOCK WARNING BANNER (IF OCCUPIED BY ANOTHER TEAM MEMBER) */}
+          {/* PRESENCE LOCK WARNING BANNER */}
           {isLockedByOther && (
             <div className="mb-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 flex items-center gap-3 text-xs">
               <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0" />
@@ -714,6 +874,9 @@ export default function AIAdvisorPage() {
               </div>
             ) : (
               chatMessages.map((msg, idx) => {
+                // Parse Consent Action Proposals
+                const txProposal = selectedPersona === "cfo" && msg.role === "assistant" ? parseTransactionProposal(msg.text) : null;
+                const invProposal = selectedPersona === "ops" && msg.role === "assistant" ? parseInventoryProposal(msg.text) : null;
                 const isPostRelated =
                   selectedPersona === "cmo" &&
                   msg.role === "assistant" &&
@@ -747,10 +910,106 @@ export default function AIAdvisorPage() {
                         ) : (
                           <>
                             <div className="prose dark:prose-invert prose-xs max-w-none space-y-2 text-xs leading-relaxed">
-                              <ReactMarkdown>{msg.text}</ReactMarkdown>
+                              <ReactMarkdown>{msg.text.replace(/\[PROPOSE_[\s\S]*?\]/g, "")}</ReactMarkdown>
                             </div>
 
-                            {/* ACTION BLOCK: POST NOW & EDIT POST */}
+                            {/* 1. CFO CONSENT ACTION CARD: ADD/UPDATE FINANCE RECORD */}
+                            {txProposal && (
+                              <div className="mt-4 p-4 rounded-2xl bg-[#4A7C6F]/10 border border-[#4A7C6F]/30 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase text-[#4A7C6F] dark:text-emerald-400 tracking-wider flex items-center gap-1.5">
+                                    <DollarSign className="w-3.5 h-3.5" /> Finance Record Proposal
+                                  </span>
+                                  {msg.isTransactionApproved && (
+                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3" /> Recorded in Ledger
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-white/60 dark:bg-black/20 text-xs space-y-1">
+                                  <div className="flex justify-between font-bold">
+                                    <span>Type:</span>
+                                    <span className={`capitalize ${txProposal.type === "expense" ? "text-rose-600" : "text-emerald-600"}`}>
+                                      {txProposal.type}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between font-bold">
+                                    <span>Title:</span>
+                                    <span>{txProposal.title}</span>
+                                  </div>
+                                  <div className="flex justify-between font-extrabold text-sm">
+                                    <span>Amount:</span>
+                                    <span className="text-[#1A1A1A] dark:text-white">₹{txProposal.amount.toLocaleString("en-IN")}</span>
+                                  </div>
+                                </div>
+
+                                <div className="pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveTransaction(txProposal, idx)}
+                                    disabled={processingActionIdx === idx || msg.isTransactionApproved || isLockedByOther}
+                                    className="w-full py-2.5 rounded-xl bg-[#4A7C6F] hover:bg-[#3D685C] text-white font-black text-xs transition shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                                  >
+                                    {processingActionIdx === idx ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <Check className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>{msg.isTransactionApproved ? "Saved to Ledger" : "Approve & Save Record"}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 2. OPS MANAGER CONSENT ACTION CARD: INVENTORY RECORD UPDATE */}
+                            {invProposal && (
+                              <div className="mt-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider flex items-center gap-1.5">
+                                    <Package className="w-3.5 h-3.5" /> Inventory Update Proposal
+                                  </span>
+                                  {msg.isInventoryApproved && (
+                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3" /> Catalog Updated
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-white/60 dark:bg-black/20 text-xs space-y-1">
+                                  <div className="flex justify-between font-bold">
+                                    <span>Product:</span>
+                                    <span>{invProposal.name}</span>
+                                  </div>
+                                  <div className="flex justify-between font-bold">
+                                    <span>Stock Quantity:</span>
+                                    <span className="text-amber-600 dark:text-amber-400">{invProposal.quantity} units</span>
+                                  </div>
+                                  <div className="flex justify-between font-bold">
+                                    <span>Price:</span>
+                                    <span>₹{invProposal.price}</span>
+                                  </div>
+                                </div>
+
+                                <div className="pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveInventoryUpdate(invProposal, idx)}
+                                    disabled={processingActionIdx === idx || msg.isInventoryApproved || isLockedByOther}
+                                    className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs transition shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                                  >
+                                    {processingActionIdx === idx ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <Check className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>{msg.isInventoryApproved ? "Catalog Updated" : "Confirm & Update Inventory"}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 3. CMO CONSENT ACTION CARD: POST NOW & EDIT POST */}
                             {isPostRelated && (
                               <div className="mt-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 space-y-3">
                                 <div className="flex items-center justify-between">
@@ -772,10 +1031,10 @@ export default function AIAdvisorPage() {
                                   <button
                                     type="button"
                                     onClick={() => handleDirectPostNow(msg.text, idx)}
-                                    disabled={publishingMessageIdx === idx || msg.isPosted || isLockedByOther}
+                                    disabled={processingActionIdx === idx || msg.isPosted || isLockedByOther}
                                     className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs transition shadow-xs flex items-center gap-1.5 disabled:opacity-50"
                                   >
-                                    {publishingMessageIdx === idx ? (
+                                    {processingActionIdx === idx ? (
                                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                     ) : (
                                       <Share2 className="w-3.5 h-3.5" />
@@ -889,7 +1148,7 @@ export default function AIAdvisorPage() {
           </form>
         </div>
 
-        {/* Right Column: Persona Selection Sidebar (4 cols) */}
+        {/* Right Column: Persona Selection Sidebar & Live Inventory Widget (4 cols) */}
         <aside className="lg:col-span-4 space-y-4 sticky top-20">
           <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 p-6 shadow-sm space-y-4">
             <div>
@@ -953,6 +1212,57 @@ export default function AIAdvisorPage() {
               })}
             </div>
           </div>
+
+          {/* OPS MANAGER SMART INVENTORY WIDGET */}
+          {selectedPersona === "ops" && (
+            <div className="bg-white dark:bg-[#1A1A1A] rounded-3xl border border-[#E5E0D8] dark:border-white/10 p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-[#E5E0D8] dark:border-white/10">
+                <span className="text-xs font-black uppercase text-[#1A1A1A] dark:text-white flex items-center gap-1.5">
+                  <Package className="w-4 h-4 text-amber-500" /> Live Inventory Catalog ({liveInventory.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={fetchInventoryData}
+                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 transition"
+                  title="Refresh Inventory"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingInventory ? "animate-spin" : ""}`} />
+                </button>
+              </div>
+
+              {loadingInventory ? (
+                <div className="py-4 text-center text-xs text-gray-400">Loading catalog...</div>
+              ) : liveInventory.length === 0 ? (
+                <div className="py-4 text-center text-xs text-gray-400 space-y-1">
+                  <p>No products in inventory yet.</p>
+                  <p className="text-[10px]">Ask Ops Manager to add items!</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {liveInventory.slice(0, 6).map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-2.5 rounded-xl bg-[#F7F6F3] dark:bg-[#252525] border border-gray-200 dark:border-white/5 flex items-center justify-between text-xs"
+                    >
+                      <div className="min-w-0 flex-1 pr-2">
+                        <p className="font-bold truncate text-[#1A1A1A] dark:text-white">{item.name}</p>
+                        <p className="text-[10px] text-gray-400 font-mono">₹{item.price}</p>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded-full font-black text-[10px] ${
+                          parseInt(item.quantity || 0, 10) <= 5
+                            ? "bg-rose-500/10 text-rose-600 border border-rose-500/20"
+                            : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                        }`}
+                      >
+                        {item.quantity} units
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Guarantee Card */}
           <div className="p-5 rounded-3xl bg-[#EEEAE4] dark:bg-[#222222] border border-[#E5E0D8] dark:border-white/10 space-y-2 text-xs">

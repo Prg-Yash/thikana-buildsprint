@@ -267,7 +267,7 @@ export function PostCard({ post, currentUserId, onDelete, onUpdate }) {
       {/* 1. Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href={`/${post?.username || post?.businessId || "store"}`}>
+          <Link href={`/store/${post?.username || post?.businessId || "store"}`}>
             <div className="relative w-11 h-11 rounded-full overflow-hidden bg-[#1A1A1A] text-white flex items-center justify-center font-bold text-sm border border-gray-200 dark:border-white/10">
               {post?.businessAvatar ? (
                 <Image
@@ -285,7 +285,7 @@ export function PostCard({ post, currentUserId, onDelete, onUpdate }) {
           <div>
             <div className="flex items-center gap-1.5">
               <Link
-                href={`/${post?.username || post?.businessId || "store"}`}
+                href={`/store/${post?.username || post?.businessId || "store"}`}
                 className="font-black text-sm text-[#1A1A1A] dark:text-white hover:underline"
               >
                 {post?.businessName || "Local Merchant"}

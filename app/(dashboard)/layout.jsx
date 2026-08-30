@@ -290,7 +290,7 @@ function DashboardContent({ children }) {
 
                     {user?.username && (
                       <Link
-                        href={`/${user.username}`}
+                        href={`/store/${user.username}`}
                         onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition"
                       >

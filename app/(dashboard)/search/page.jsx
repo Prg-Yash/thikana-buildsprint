@@ -422,7 +422,7 @@ function SearchPageContent() {
                       <span>Nearby</span>
                     )}
                     <Link
-                      href={`/store/${item.id}`}
+                      href={`/store/${item.username || item.id}`}
                       className="text-[#1A1A1A] dark:text-white flex items-center gap-1 group-hover:translate-x-1 transition-transform"
                     >
                       Visit <ArrowRight className="w-3.5 h-3.5" />
